@@ -1,0 +1,26 @@
+<view class="container">
+  <view class="header">
+    <text class="title">豆包 AI 总结助手</text>
+  </view>
+
+  <view class="input-section">
+    <textarea 
+      class="input-box" 
+      placeholder="请输入您想要总结的内容..." 
+      bindinput="onInput"
+      value="{{inputValue}}"
+      maxlength="-1"
+    ></textarea>
+  </view>
+
+  <view class="btn-section">
+    <button type="primary" bindtap="onSummarize" loading="{{isLoading}}">开始总结</button>
+  </view>
+
+  <view class="result-section" wx:if="{{result}}">
+    <text class="result-title">AI 总结结果：</text>
+    <view class="result-content">
+      <text selectable="true">{{result}}</text>
+    </view>
+  </view>
+</view>

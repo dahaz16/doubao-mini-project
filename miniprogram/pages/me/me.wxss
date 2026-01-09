@@ -1,0 +1,13 @@
+.container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #fff;
+}
+
+.greeting {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+}

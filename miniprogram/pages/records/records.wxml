@@ -1,0 +1,25 @@
+<view class="container">
+  <view class="record-list">
+    <block wx:for="{{records}}" wx:key="id">
+      <view class="record-item">
+        <view class="record-header">
+          <text class="time">{{item.created_at}}</text>
+        </view>
+        <view class="record-body">
+          <view class="section">
+            <text class="label">输入：</text>
+            <text class="content">{{item.user_input}}</text>
+          </view>
+          <view class="divider"></view>
+          <view class="section">
+            <text class="label">AI 总结：</text>
+            <text class="content ai-content">{{item.ai_summary}}</text>
+          </view>
+        </view>
+      </view>
+    </block>
+    <view wx:if="{{records.length === 0 && !isLoading}}" class="empty-tip">
+      暂无记录，快去“总结”页试试吧
+    </view>
+  </view>
+</view>

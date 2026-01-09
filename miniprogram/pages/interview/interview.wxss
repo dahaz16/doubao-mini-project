@@ -1,0 +1,198 @@
+/* Page container with gradient background */
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 0;
+  background: linear-gradient(180deg, #FDFBFD 0%, #F4F6FA 100%);
+  position: relative;
+  justify-content: space-between; /* Space out Top, Middle, Bottom */
+}
+
+/* --- Top Section --- */
+.top-section {
+  width: 100%;
+  padding-top: 100rpx; /* Safe area */
+  padding-left: 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* Left align */
+}
+
+.avatar-wrapper {
+  margin-bottom: 20rpx;
+}
+
+.avatar-placeholder {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background-color: #eeeeee;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 32rpx;
+  color: #999999;
+  border: 4rpx solid #ffffff;
+  box-shadow: 0 6rpx 20rpx rgba(0,0,0,0.05);
+}
+
+/* Chat Bubble */
+.chat-bubble {
+  background: #FFFFFF;
+  border-radius: 4rpx 32rpx 32rpx 32rpx; /* Top-Left square to point to avatar */
+  padding: 30rpx;
+  max-width: 85%;
+  box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.04);
+  font-size: 32rpx;
+  color: #333333;
+  line-height: 1.5;
+  transition: all 0.3s ease;
+}
+
+.thinking-bubble {
+  background: linear-gradient(90deg, #FF9A9E 0%, #FECFEF 100%); 
+  color: #fff;
+  font-weight: 500;
+}
+
+/* --- Middle Section (User Feedback) --- */
+.content-section {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 40rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.user-feedback {
+  width: 100%;
+  text-align: center;
+}
+
+.user-feedback text {
+  font-size: 40rpx; /* Larger font for subtitle feel */
+  font-weight: 500;
+  color: #333;
+  line-height: 1.4;
+}
+
+.cursor {
+  display: inline-block;
+  width: 4rpx;
+  height: 40rpx;
+  background: #333;
+  margin-left: 8rpx;
+  vertical-align: middle;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* --- Controls Section --- */
+.controls-section {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding-bottom: 80rpx; /* Bottom padding */
+}
+
+/* Narrate Button */
+.narrate-btn {
+  background: #FFFFFF;
+  box-shadow: 0 10rpx 40rpx rgba(0,0,0,0.08);
+  border-radius: 60rpx;
+  width: 400rpx;
+  height: 110rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 36rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+/* Recording Controls */
+.recording-controls {
+  display: flex;
+  align-items: center;
+  gap: 30rpx;
+  width: 90%;
+  justify-content: space-between;
+}
+
+.cancel-btn, .finish-btn {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 40rpx;
+  box-shadow: 0 8rpx 20rpx rgba(0,0,0,0.05);
+  background: #FFFFFF;
+}
+
+.cancel-btn {
+  color: #FF5A5A;
+}
+
+.finish-btn {
+  color: #00C853;
+}
+
+/* Waveform container */
+.waveform-container {
+  flex: 1;
+  background: #2A2A2A; /* Darker Sub-bg */
+  height: 100rpx;
+  border-radius: 50rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  color: #FFF;
+}
+
+.waveform-bar {
+  width: 6rpx;
+  height: 30rpx;
+  background: #00E676; /* Green waves */
+  border-radius: 4rpx;
+  animation: wave 1s infinite ease-in-out;
+}
+
+.waveform-bar:nth-child(1) { animation-delay: 0s; }
+.waveform-bar:nth-child(2) { animation-delay: 0.2s; }
+.waveform-bar:nth-child(3) { animation-delay: 0.4s; }
+.waveform-bar:nth-child(4) { animation-delay: 0.6s; }
+
+@keyframes wave {
+  0%, 100% { height: 30rpx; opacity: 0.5; }
+  50% { height: 60rpx; opacity: 1; }
+}
+
+.timer {
+  margin-left: 20rpx;
+  font-size: 28rpx;
+  font-weight: bold;
+  font-family: monospace;
+}
+
+/* Wait Button */
+.wait-btn {
+  background: #F0F0F0;
+  color: #999;
+  border-radius: 60rpx;
+  width: 400rpx;
+  height: 110rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 32rpx;
+}
