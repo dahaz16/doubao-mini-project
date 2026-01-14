@@ -381,20 +381,41 @@ Page({
             status: 'idle',
             userInput: '',
             recordingTime: '60'
-        });
         console.log("录音已取消");
-    },
+        },
 
-    /**
-     * 切换到键盘输入模式
-     * 
-     * 暂未实现，仅显示提示
-     */
-    handleSwitchToKeyboard() {
+            /**
+         * 测试功能：切换不同行数的测试文字
+         * 
+         * 每行16个字，生成1-6行的测试文字
+         */
+            handleSwitchToKeyboard() {
+            const testTexts = [
+                '这是一行测试文字啊', // 1行 (8字)
+                '这是两行测试文字这是两行测试文字这是两行测试', // 2行 (24字)
+                '这是三行测试文字这是三行测试文字这是三行测试文字这是三行测试文字这是三行测试', // 3行 (40字)
+                '这是四行测试文字这是四行测试文字这是四行测试文字这是四行测试文字这是四行测试文字这是四行测试文字这是四行', // 4行 (56字)
+                '这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行', // 5行 (72字)
+                '这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行' // 6行 (88字)
+            ];
+
+            // 获取当前测试索引
+            if(!this.data.testIndex) {
+            this.setData({ testIndex: 0 });
+        }
+
+        // 切换到下一个测试文字
+        const nextIndex = (this.data.testIndex + 1) % testTexts.length;
+        this.setData({
+            aiMessage: testTexts[nextIndex],
+            testIndex: nextIndex,
+            status: 'idle'
+        });
+
         wx.showToast({
-            title: '键盘输入功能开发中',
+            title: `测试：${nextIndex + 1}行文字`,
             icon: 'none',
-            duration: 1500
+            duration: 1000
         });
     },
 
