@@ -50,14 +50,10 @@
   width: 100%;
 }
 
-/* 按钮区域 */
+/* 按钮区域 - 普通流式布局 */
 .button-section {
   display: flex;
   flex-direction: column;
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
   padding: 0 20px; /* 固定 20px 物理边距 */
   padding-bottom: calc(40px + env(safe-area-inset-bottom)); /* 固定 40px */
   gap: 20px; /* 固定 20px 间距 */
