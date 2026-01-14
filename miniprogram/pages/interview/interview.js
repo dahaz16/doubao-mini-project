@@ -411,7 +411,7 @@ Page({
             aiMessage: testTexts[nextIndex],
             testIndex: nextIndex,
             status: 'idle',
-            scrollToView: 'subtitle-bottom' // 滚动到底部锚点
+            scrollTop: 9999 // 设置一个很大的值强制滚动到底部
         });
 
         wx.showToast({
