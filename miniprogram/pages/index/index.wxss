@@ -2,11 +2,8 @@
 .container {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  align-items: center;
   height: 100vh;
-  padding: 80rpx 40rpx;
-  padding-bottom: calc(80rpx + env(safe-area-inset-bottom));
+  position: relative;
   background-image: url('/images/homepage_background.jpg');
   background-size: cover;
   background-position: center;
@@ -18,28 +15,35 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 120rpx;
+  position: absolute;
+  top: 518rpx; /* 259px * 2 */
+  left: 0;
+  right: 0;
 }
 
 .main-title {
-  font-size: 112rpx;
+  font-size: 112rpx; /* 56px * 2 */
   font-weight: 600;
   color: #373737;
-  margin-bottom: 20rpx;
+  margin-bottom: 0;
 }
 
 .version-number {
-  font-size: 36rpx;
+  font-size: 40rpx; /* 20px * 2 */
   color: #A6A6A6;
+  margin-top: 176rpx; /* (347-259) * 2 = 88px * 2 */
 }
 
 /* 按钮区域 */
 .button-section {
   display: flex;
   flex-direction: column;
-  width: 100%;
-  gap: 40rpx;
-  padding: 0 40rpx;
+  position: absolute;
+  bottom: 0;
+  left: 40rpx; /* 20px * 2 */
+  right: 40rpx; /* 20px * 2 */
+  padding-bottom: calc(80rpx + env(safe-area-inset-bottom));
+  gap: 40rpx; /* 20px * 2 */
 }
 
 .primary-btn,
@@ -53,7 +57,7 @@
   border-radius: 50rpx;
   background: #FFFFFF;
   box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
-  font-size: 40rpx;
+  font-size: 40rpx; /* 20px * 2 */
   font-weight: 600;
   color: #373737;
   border: none;
