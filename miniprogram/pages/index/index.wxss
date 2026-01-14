@@ -1,55 +1,139 @@
+/* 容器 */
 .container {
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  height: 100vh;
+  padding: 80rpx 40rpx;
+  padding-bottom: calc(80rpx + env(safe-area-inset-bottom));
 }
 
-.header {
-  margin-bottom: 20px;
+/* 流光渐变背景 - 动画版 */
+.animated-bg {
+  background: linear-gradient(135deg, #FFF5F7, #F3F4F6, #ECF6FF);
+  background-size: 400% 400%;
+  animation: gradientFlow 8s ease infinite;
 }
 
-.title {
-  font-size: 24px;
-  font-weight: bold;
-  color: #333;
+@keyframes gradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-.input-section {
+/* 流光渐变背景 - 静态版（低端机降级） */
+.static-bg {
+  background: linear-gradient(135deg, #FFF5F7, #F3F4F6, #ECF6FF);
+}
+
+/* 标题区域 */
+.title-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 120rpx;
+}
+
+.main-title {
+  font-size: 112rpx;
+  font-weight: 600;
+  color: #373737;
+  margin-bottom: 20rpx;
+}
+
+.version-number {
+  font-size: 36rpx;
+  color: #A6A6A6;
+}
+
+/* 按钮区域 */
+.button-section {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  margin-bottom: 20px;
+  gap: 24rpx;
 }
 
-.input-box {
+.primary-btn,
+.secondary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
   width: 100%;
-  height: 150px;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 10px;
-  box-sizing: border-box;
-  font-size: 16px;
+  height: 100rpx;
+  border-radius: 50rpx;
+  background: #FFFFFF;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #373737;
+  border: none;
 }
 
-.btn-section {
-  width: 100%;
-  margin-bottom: 30px;
+.primary-btn::after,
+.secondary-btn::after {
+  border: none;
 }
 
-.result-section {
-  width: 100%;
-  background: #fff;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+.btn-icon {
+  width: 48rpx;
+  height: 48rpx;
 }
 
-.result-title {
-  font-weight: bold;
-  font-size: 18px;
-  margin-bottom: 10px;
-  display: block;
+/* 弹窗遮罩层 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
 }
 
-.result-content {
-  font-size: 16px;
+/* 弹窗容器 */
+.modal-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 600rpx;
+  background: #FFFFFF;
+  border-radius: 60rpx;
+  padding: 60rpx 40rpx 40rpx;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+}
+
+.modal-avatar {
+  width: 260rpx;
+  height: 340rpx;
+  margin-bottom: 40rpx;
+}
+
+.modal-text {
+  font-size: 32rpx;
+  color: #373737;
+  text-align: center;
   line-height: 1.6;
-  color: #333;
+  margin-bottom: 40rpx;
+}
+
+.modal-btn {
+  width: 100%;
+  height: 100rpx;
+  border-radius: 50rpx;
+  background: #FFFFFF;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #373737;
+  border: none;
+}
+
+.modal-btn::after {
+  border: none;
 }

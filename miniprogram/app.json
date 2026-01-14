@@ -1,21 +1,22 @@
 {
     "pages": [
-        "pages/interview/interview",
         "pages/index/index",
+        "pages/interview/interview",
         "pages/records/records",
         "pages/me/me"
     ],
     "window": {
         "backgroundTextStyle": "light",
-        "navigationBarBackgroundColor": "#fff",
-        "navigationBarTitleText": "豆包AI助手",
-        "navigationBarTextStyle": "black"
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarTitleText": "",
+        "navigationBarTextStyle": "black",
+        "navigationStyle": "default"
     },
     "tabBar": {
         "list": [
             {
                 "pagePath": "pages/index/index",
-                "text": "总结"
+                "text": "首页"
             },
             {
                 "pagePath": "pages/records/records",

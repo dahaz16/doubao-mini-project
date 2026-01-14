@@ -1,26 +1,28 @@
-<view class="container">
-  <view class="header">
-    <text class="title">豆包 AI 总结助手</text>
+<view class="container {{isLowEnd ? 'static-bg' : 'animated-bg'}}">
+  <!-- 主标题区域 -->
+  <view class="title-section">
+    <text class="main-title">感谢参与测试</text>
+    <text class="version-number">v0.0.1 2026011401</text>
   </view>
 
-  <view class="input-section">
-    <textarea 
-      class="input-box" 
-      placeholder="请输入您想要总结的内容..." 
-      bindinput="onInput"
-      value="{{inputValue}}"
-      maxlength="-1"
-    ></textarea>
+  <!-- 底部按钮组 -->
+  <view class="button-section">
+    <button class="primary-btn" bindtap="onStartInterview">
+      <image class="btn-icon" src="/images/microphone.png" mode="aspectFit"></image>
+      <text>开始讲述</text>
+    </button>
+    <button class="secondary-btn" bindtap="onViewMemories">
+      <image class="btn-icon" src="/images/book.png" mode="aspectFit"></image>
+      <text>查看回忆</text>
+    </button>
   </view>
 
-  <view class="btn-section">
-    <button type="primary" bindtap="onSummarize" loading="{{isLoading}}">开始总结</button>
-  </view>
-
-  <view class="result-section" wx:if="{{result}}">
-    <text class="result-title">AI 总结结果：</text>
-    <view class="result-content">
-      <text selectable="true">{{result}}</text>
+  <!-- 功能未开放弹窗 -->
+  <view class="modal-mask" wx:if="{{showModal}}" bindtap="onCloseModal">
+    <view class="modal-container" catchtap="stopPropagation">
+      <image class="modal-avatar" src="/images/AI_Avatar.png" mode="aspectFit"></image>
+      <text class="modal-text">当前功能阿拓正在调试中，将在下个测试版本中开放</text>
+      <button class="modal-btn" bindtap="onCloseModal">好的</button>
     </view>
   </view>
 </view>
