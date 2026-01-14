@@ -574,8 +574,39 @@ Page({
         this.audioQueue = [];      // 待播放的音频文件路径队列
         this.isPlaying = false;    // 是否正在播放
 
+        // ==================== 文本显示队列（逐字显示）====================
+        this.textQueue = [];       // 待显示的文本chunk队列
+        this.isDisplaying = false; // 是否正在显示文本
+        this.displayedText = "";   // 已显示的文本
+
         // 累积的AI回复文本
         let accumulatedText = "";
+
+        // 逐字显示函数（500ms间隔，慢10倍）
+        const displayNextChunk = () => {
+            if (this.textQueue.length === 0) {
+                this.isDisplaying = false;
+                return;
+            }
+
+            this.isDisplaying = true;
+            const chunk = this.textQueue.shift();
+            this.displayedText += chunk;
+
+            // 更新UI显示
+            const key = `messages[${assistantMsgIndex}].content`;
+            if (this.data.messages && this.data.messages[assistantMsgIndex]) {
+                this.setData({
+                    [key]: this.displayedText,
+                    aiMessage: this.displayedText,
+                    status: 'idle',
+                    scrollTop: Date.now()
+                });
+            }
+
+            // 500ms后显示下一个chunk（慢10倍）
+            setTimeout(() => displayNextChunk(), 500);
+        };
 
         // 连接成功后发送消息
         this.chatSocket.onOpen(() => {
@@ -601,15 +632,12 @@ Page({
                         accumulatedText += data.content;
                     }
 
-                    // 更新UI显示
-                    const key = `messages[${assistantMsgIndex}].content`;
-                    if (this.data.messages && this.data.messages[assistantMsgIndex]) {
-                        this.setData({
-                            [key]: accumulatedText,
-                            aiMessage: accumulatedText,
-                            status: 'idle',  // 必须设置为idle才能显示文本
-                            scrollTop: Date.now() // 流式输出时自动滚动到底部
-                        });
+                    // 将chunk加入显示队列
+                    this.textQueue.push(data.content);
+
+                    // 如果当前没有在显示，启动显示
+                    if (!this.isDisplaying) {
+                        displayNextChunk();
                     }
                 }
                 // ----- 处理音频数据 -----
