@@ -18,8 +18,8 @@
 }
 
 .ai-avatar {
-  width: 130px; /* PRD规定 */
-  height: 170px; /* PRD规定 */
+  width: 360px;
+  height: 180px;
 }
 
 /* ==================== Middle 区：AI 字幕气泡 ==================== */
@@ -27,15 +27,15 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: 0 20px 20px 20px;
   overflow-y: auto;
 }
 
 .ai-subtitle-bubble {
   background: rgba(255, 255, 255, 0.9);
-  border-radius: 30px; /* PRD规定 */
+  border-radius: 30px;
   padding: 20px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25); /* PRD规定 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
 }
 
 /* 思考中状态：彩虹渐变边框动画 */
