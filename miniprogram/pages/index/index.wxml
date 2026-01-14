@@ -9,15 +9,17 @@
   </view>
 
   <!-- 底部按钮组 -->
-  <view class="button-section">
-    <button class="primary-btn" bindtap="onStartInterview">
-      <image class="btn-icon" src="/images/microphone.png" mode="aspectFit"></image>
-      <text>开始讲述</text>
-    </button>
-    <button class="secondary-btn" bindtap="onViewMemories">
-      <image class="btn-icon" src="/images/book.png" mode="aspectFit"></image>
-      <text>查看回忆</text>
-    </button>
+  <view class="button-wrapper">
+    <view class="button-section">
+      <button class="primary-btn" bindtap="onStartInterview">
+        <image class="btn-icon" src="/images/microphone.png" mode="aspectFit"></image>
+        <text>开始讲述</text>
+      </button>
+      <button class="secondary-btn" bindtap="onViewMemories">
+        <image class="btn-icon" src="/images/book.png" mode="aspectFit"></image>
+        <text>查看回忆</text>
+      </button>
+    </view>
   </view>
 
   <!-- 功能未开放弹窗 -->

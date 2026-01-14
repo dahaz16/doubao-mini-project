@@ -41,6 +41,13 @@
   margin-top: 10px; /* 固定 10px 物理间距 */
 }
 
+/* 按钮包裹容器 - 提供相对定位参考 */
+.button-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
 /* 按钮区域 */
 .button-section {
   display: flex;
@@ -49,11 +56,10 @@
   bottom: 0;
   left: 0;
   right: 0;
-  width: 100%; /* 确保父容器100%宽度 */
   padding: 0 20px; /* 固定 20px 物理边距 */
   padding-bottom: calc(40px + env(safe-area-inset-bottom)); /* 固定 40px */
   gap: 20px; /* 固定 20px 间距 */
-  box-sizing: border-box; /* 确保padding包含在width内 */
+  box-sizing: border-box;
 }
 
 .primary-btn,
@@ -64,12 +70,12 @@
   gap: 8px; /* 固定 8px */
   width: 100%;
   height: 50px; /* 固定 50px 高度 */
-  padding: 0; /* ⭐ 重置按钮默认内边距 */
+  padding: 0; /* 重置按钮默认内边距 */
   margin: 0; /* 重置默认外边距 */
   border-radius: 25px; /* 固定 25px 圆角 */
   background: #FFFFFF;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25); /* 固定 4px 8px */
-  font-size: 20px; /* 固定 20px */
+  font-size: 32rpx; /* 改为 32rpx 响应式字号 */
   font-weight: 600;
   color: #373737;
   border: none;
@@ -82,7 +88,7 @@
 }
 
 .btn-icon {
-  width: 19px; /* 38rpx ÷ 2 = 19px */
+  width: 19px;
   height: 19px;
 }
 
