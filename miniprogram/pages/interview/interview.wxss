@@ -1,198 +1,179 @@
-/* Page container with gradient background */
+/* 基础容器 */
 .container {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 0;
-  background: linear-gradient(180deg, #FDFBFD 0%, #F4F6FA 100%);
-  position: relative;
-  justify-content: space-between; /* Space out Top, Middle, Bottom */
+  background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+  padding: 40rpx 30rpx;
 }
 
-/* --- Top Section --- */
+/* 顶部区域 */
 .top-section {
-  width: 100%;
-  padding-top: 100rpx; /* Safe area */
-  padding-left: 40rpx;
   display: flex;
   flex-direction: column;
-  align-items: flex-start; /* Left align */
+  align-items: center;
+  margin-bottom: 60rpx;
 }
 
 .avatar-wrapper {
-  margin-bottom: 20rpx;
+  margin-bottom: 30rpx;
 }
 
 .avatar-placeholder {
   width: 120rpx;
   height: 120rpx;
-  border-radius: 50%;
-  background-color: #eeeeee;
+  border-radius: 60rpx;
+  background: #e0e0e0;
   display: flex;
-  justify-content: center;
   align-items: center;
-  font-size: 32rpx;
-  color: #999999;
-  border: 4rpx solid #ffffff;
-  box-shadow: 0 6rpx 20rpx rgba(0,0,0,0.05);
+  justify-content: center;
+  font-size: 24rpx;
+  color: #999;
 }
 
-/* Chat Bubble */
 .chat-bubble {
-  background: #FFFFFF;
-  border-radius: 4rpx 32rpx 32rpx 32rpx; /* Top-Left square to point to avatar */
+  background: white;
+  border-radius: 20rpx;
   padding: 30rpx;
-  max-width: 85%;
-  box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.04);
+  max-width: 600rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.08);
   font-size: 32rpx;
-  color: #333333;
-  line-height: 1.5;
-  transition: all 0.3s ease;
+  line-height: 1.6;
+  color: #333;
 }
 
-.thinking-bubble {
-  background: linear-gradient(90deg, #FF9A9E 0%, #FECFEF 100%); 
-  color: #fff;
-  font-weight: 500;
-}
-
-/* --- Middle Section (User Feedback) --- */
+/* 中间区域 - 用户输入显示 */
 .content-section {
   flex: 1;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 0 40rpx;
-  width: 100%;
-  box-sizing: border-box;
+  justify-content: flex-end;
+  flex-direction: column;
+  margin-bottom: 40rpx;
 }
 
 .user-feedback {
-  width: 100%;
-  text-align: center;
-}
-
-.user-feedback text {
-  font-size: 40rpx; /* Larger font for subtitle feel */
-  font-weight: 500;
+  background: #e8f5e9;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  max-width: 600rpx;
+  align-self: flex-end;
+  font-size: 32rpx;
+  line-height: 1.6;
   color: #333;
-  line-height: 1.4;
+  display: flex;
+  align-items: center;
 }
 
 .cursor {
   display: inline-block;
   width: 4rpx;
   height: 40rpx;
-  background: #333;
+  background: #4caf50;
   margin-left: 8rpx;
-  vertical-align: middle;
   animation: blink 1s infinite;
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
-/* --- Controls Section --- */
+/* 底部控制区域 */
 .controls-section {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  padding-bottom: 80rpx; /* Bottom padding */
+  padding-bottom: 40rpx;
 }
 
-/* Narrate Button */
-.narrate-btn {
-  background: #FFFFFF;
-  box-shadow: 0 10rpx 40rpx rgba(0,0,0,0.08);
-  border-radius: 60rpx;
-  width: 400rpx;
-  height: 110rpx;
+/* 空闲状态 - 单个讲述按钮 */
+.record-button-container {
   display: flex;
   justify-content: center;
+}
+
+.record-button {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 70rpx;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
   align-items: center;
-  font-size: 36rpx;
-  color: #333;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(102, 126, 234, 0.4);
+  transition: all 0.3s;
+}
+
+.record-button:active {
+  transform: scale(0.95);
+}
+
+.record-button text {
+  color: white;
+  font-size: 32rpx;
   font-weight: 500;
 }
 
-/* Recording Controls */
-.recording-controls {
+/* 录音状态 - 取消/计时/发送 */
+.recording-controls-container {
   display: flex;
   align-items: center;
-  gap: 30rpx;
-  width: 90%;
   justify-content: space-between;
+  padding: 0 60rpx;
 }
 
-.cancel-btn, .finish-btn {
+.cancel-button, .send-button {
   width: 100rpx;
-  height: 100rpx;
-  border-radius: 50%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 40rpx;
-  box-shadow: 0 8rpx 20rpx rgba(0,0,0,0.05);
-  background: #FFFFFF;
-}
-
-.cancel-btn {
-  color: #FF5A5A;
-}
-
-.finish-btn {
-  color: #00C853;
-}
-
-/* Waveform container */
-.waveform-container {
-  flex: 1;
-  background: #2A2A2A; /* Darker Sub-bg */
   height: 100rpx;
   border-radius: 50rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12rpx;
-  color: #FFF;
+  font-size: 48rpx;
+  transition: all 0.3s;
 }
 
-.waveform-bar {
-  width: 6rpx;
-  height: 30rpx;
-  background: #00E676; /* Green waves */
-  border-radius: 4rpx;
-  animation: wave 1s infinite ease-in-out;
+.cancel-button {
+  background: #ff5252;
+  color: white;
+  box-shadow: 0 4rpx 12rpx rgba(255, 82, 82, 0.3);
 }
 
-.waveform-bar:nth-child(1) { animation-delay: 0s; }
-.waveform-bar:nth-child(2) { animation-delay: 0.2s; }
-.waveform-bar:nth-child(3) { animation-delay: 0.4s; }
-.waveform-bar:nth-child(4) { animation-delay: 0.6s; }
-
-@keyframes wave {
-  0%, 100% { height: 30rpx; opacity: 0.5; }
-  50% { height: 60rpx; opacity: 1; }
+.send-button {
+  background: #4caf50;
+  color: white;
+  box-shadow: 0 4rpx 12rpx rgba(76, 175, 80, 0.3);
 }
 
-.timer {
-  margin-left: 20rpx;
-  font-size: 28rpx;
-  font-weight: bold;
-  font-family: monospace;
+.cancel-button:active, .send-button:active {
+  transform: scale(0.9);
 }
 
-/* Wait Button */
-.wait-btn {
-  background: #F0F0F0;
-  color: #999;
-  border-radius: 60rpx;
-  width: 400rpx;
-  height: 110rpx;
+.recording-timer {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  font-size: 32rpx;
+  gap: 10rpx;
+}
+
+.waveform-icon {
+  font-size: 40rpx;
+  color: #667eea;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.recording-timer text {
+  font-size: 48rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+/* 思考状态 */
+.thinking-indicator {
+  text-align: center;
+  padding: 30rpx;
+  color: #999;
+  font-size: 28rpx;
 }

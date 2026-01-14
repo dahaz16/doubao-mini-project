@@ -47,3 +47,32 @@ def get_doubao_chat_reply(messages: list) -> str:
         return completion.choices[0].message.content
     except Exception as e:
         return f"AI Service Error: {str(e)}"
+
+def get_doubao_chat_reply_stream(messages: list):
+    """
+    Sends a list of messages to Doubao AI (Ark) and YIELDS the reply chunk by chunk.
+    """
+    api_key = os.getenv("ARK_API_KEY")
+    endpoint_id = os.getenv("ARK_ENDPOINT_ID")
+
+    if not api_key or not endpoint_id:
+        yield "Error: ARK_API_KEY or ARK_ENDPOINT_ID not configured."
+        return
+
+    client = Ark(api_key=api_key)
+
+    try:
+        stream = client.chat.completions.create(
+            model=endpoint_id,
+            messages=messages,
+            stream=True
+        )
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            content = chunk.choices[0].delta.content
+            # Note: Content can be None or empty string
+            if content:
+                yield content
+    except Exception as e:
+        yield f"[AI Error: {str(e)}]"

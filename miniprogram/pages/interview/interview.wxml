@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container {{status === 'recording' ? 'is-recording' : ''}}">
   <!-- Top Section: Avatar & AI Message -->
   <view class="top-section">
     <view class="avatar-wrapper">
@@ -9,14 +9,9 @@
       <text wx:if="{{status !== 'thinking'}}">{{aiMessage}}</text>
       <text wx:else>思考中...</text>
     </view>
-    
-    <!-- Debug Info (Moved to below AI Bubble) -->
-    <view class="debug-info" style="font-size: 20rpx; color: #999; margin-top: 10rpx; text-align: left;">
-      {{micStatus}}
-    </view>
   </view>
 
-  <!-- Middle Section: User Streaming Text -->
+  <!-- Middle Section: User Input Display -->
   <view class="content-section">
     <view class="user-feedback" wx:if="{{userInput || status === 'recording'}}">
       <text>{{userInput}}</text>
@@ -24,42 +19,34 @@
     </view>
   </view>
 
-  <!-- Bottom Section: Controls -->
+  <!-- Bottom Section: Recording Controls -->
   <view class="controls-section">
-    <!-- Idle State: Big Narrate Button -->
-    <view class="controls" wx:if="{{status === 'idle'}}">
-    
-      <view class="mic-button-wrapper" 
-            bindtouchstart="startRecording" 
-            bindtouchend="finishRecording">
-        <image class="mic-icon" src="../../images/mic.png" wx:if="{{hasIcon}}"></image>
-        <text>🎤 讲述</text>
+    <!-- Idle State: Single Record Button -->
+    <view class="record-button-container" wx:if="{{status === 'idle'}}">
+      <view class="record-button" bindtap="handleMicToggle">
+        <text>讲述</text>
       </view>
     </view>
 
-    <!-- Recording State: Waveform and Actions -->
-    <view class="recording-controls" wx:if="{{status === 'recording'}}">
-      <view class="cancel-btn" bindtap="cancelRecording">✕</view>
+    <!-- Recording State: Cancel + Timer + Send -->
+    <view class="recording-controls-container" wx:if="{{status === 'recording'}}">
+      <view class="cancel-button" bindtap="handleCancelRecording">
+        <text>✕</text>
+      </view>
       
-      <view class="waveform-container">
-        <view class="waveform-bar"></view>
-        <view class="waveform-bar"></view>
-        <view class="waveform-bar"></view>
-        <view class="waveform-bar"></view>
-        <view class="timer">{{recordingTime}}</view>
+      <view class="recording-timer">
+        <view class="waveform-icon">|||</view>
+        <text>{{recordingTime}}</text>
       </view>
-
-      <view class="finish-btn" bindtap="finishRecording">↑</view>
+      
+      <view class="send-button" bindtap="handleMicToggle">
+        <text>↑</text>
+      </view>
     </view>
 
-    <!-- Thinking/Wait State -->
-    <view class="thinking-controls" wx:if="{{status === 'thinking'}}">
-      <view class="wait-btn">请稍等</view>
+    <!-- Thinking State -->
+    <view class="thinking-indicator" wx:if="{{status === 'thinking'}}">
+      <text>AI 思考中...</text>
     </view>
   </view>
-
-  <!-- Debug Console -->
-  <scroll-view scroll-y class="debug-console" style="height: 150rpx; width: 100%; background: #000; color: #0f0; font-size: 16rpx; padding: 10rpx; margin-top: 20rpx;">
-    <view wx:for="{{debugLogs}}" wx:key="*this">{{item}}</view>
-  </scroll-view>
 </view>
