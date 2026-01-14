@@ -17,6 +17,7 @@
 }
 
 .ai-avatar {
+  display: block;
   width: 380px;
   height: 180px;
   margin-top: 108px;
