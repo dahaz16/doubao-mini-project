@@ -6,7 +6,7 @@
 
   <!-- Middle 区：AI 字幕气泡 -->
   <view class="middle-section">
-    <view class="ai-subtitle-bubble" wx:if="{{aiMessage}}">
+    <view class="ai-subtitle-bubble">
       <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">
         {{status === 'thinking' ? '思考中...' : aiMessage}}
       </text>
@@ -15,12 +15,12 @@
 
   <!-- Bottom 区：用户输入区 -->
   <view class="bottom-section">
-    <!-- 用户字幕气泡（录音/输入时显示）-->
-    <view class="user-subtitle-bubble" wx:if="{{userInput && (status === 'recording' || status === 'typing')}}">
+    <!-- 用户字幕气泡（录音时显示实时识别结果）-->
+    <view class="user-subtitle-bubble" wx:if="{{userInput && status === 'recording'}}">
       <text class="user-subtitle-text">{{userInput}}</text>
     </view>
 
-    <!-- 音频指示器（录音状态）-->
+    <!-- 录音状态：音频指示器（声波 + 倒计时）-->
     <view class="voice-indicator" wx:if="{{status === 'recording'}}">
       <view class="voice-waveform">
         <view class="wave-bar"></view>
@@ -32,47 +32,27 @@
       <text class="voice-timer">{{recordingTime}}</text>
     </view>
 
-    <!-- 输入框（键盘状态）-->
-    <textarea 
-      class="input-field" 
-      wx:if="{{status === 'typing'}}"
-      value="{{userInput}}"
-      placeholder="请输入您的回答..."
-      maxlength="500"
-      auto-height
-      show-confirm-bar="{{false}}"
-      bindinput="onInputChange"
-    ></textarea>
-
     <!-- 控制按钮组 -->
     <view class="control-buttons">
-      <!-- 默认状态：讲述按钮 + 切换键盘按钮 -->
-      <button wx:if="{{status === 'idle'}}" class="narration-btn" bindtap="onStartRecording">讲述</button>
-      <button wx:if="{{status === 'idle'}}" class="circle-btn" bindtap="onSwitchToKeyboard">
+      <!-- 默认状态：切换键盘按钮（左）+ 讲述按钮（右）-->
+      <button wx:if="{{status === 'idle'}}" class="circle-btn" bindtap="handleSwitchToKeyboard">
         <image src="/images/switch_to_keyboard_btn.png" mode="aspectFit"></image>
       </button>
+      <button wx:if="{{status === 'idle'}}" class="narration-btn" bindtap="handleMicToggle">讲述</button>
 
-      <!-- 录音状态：取消按钮 + 发送按钮 -->
-      <button wx:if="{{status === 'recording'}}" class="circle-btn" bindtap="onCancelRecording">
+      <!-- 录音状态：取消按钮（左）+ 发送按钮（右）-->
+      <button wx:if="{{status === 'recording'}}" class="circle-btn" bindtap="handleCancelRecording">
         <image src="/images/cancel_speak_btn.png" mode="aspectFit"></image>
       </button>
-      <button wx:if="{{status === 'recording'}}" class="circle-btn" bindtap="onSendRecording">
-        <image src="/images/send_msg_btn.png" mode="aspectFit"></image>
-      </button>
-
-      <!-- 键盘状态：切换语音按钮 + 发送按钮 -->
-      <button wx:if="{{status === 'typing'}}" class="circle-btn" bindtap="onSwitchToVoice">
-        <image src="/images/switch_to_voice_btn.png" mode="aspectFit"></image>
-      </button>
-      <button wx:if="{{status === 'typing'}}" class="circle-btn" bindtap="onSendText">
+      <button wx:if="{{status === 'recording'}}" class="circle-btn send-btn" bindtap="handleMicToggle">
         <image src="/images/send_msg_btn.png" mode="aspectFit"></image>
       </button>
 
       <!-- 思考中状态：禁用按钮 -->
-      <button wx:if="{{status === 'thinking'}}" class="narration-btn-disabled" disabled>请稍等</button>
       <button wx:if="{{status === 'thinking'}}" class="circle-btn disabled" disabled>
         <image src="/images/switch_to_keyboard_btn_disabled.png" mode="aspectFit"></image>
       </button>
+      <button wx:if="{{status === 'thinking'}}" class="narration-btn-disabled" disabled>请稍等</button>
     </view>
   </view>
 </view>

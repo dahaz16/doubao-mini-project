@@ -386,6 +386,20 @@ Page({
     },
 
     /**
+     * 切换到键盘输入模式
+     * 
+     * 暂未实现，仅显示提示
+     */
+    handleSwitchToKeyboard() {
+        wx.showToast({
+            title: '键盘输入功能开发中',
+            icon: 'none',
+            duration: 1500
+        });
+    },
+
+    /**
+
      * 开始录音逻辑
      * 
      * 执行顺序：
