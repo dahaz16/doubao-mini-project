@@ -411,7 +411,7 @@ Page({
             aiMessage: testTexts[nextIndex],
             testIndex: nextIndex,
             status: 'idle',
-            scrollTop: 9999 // 设置一个很大的值强制滚动到底部
+            scrollTop: Date.now() // 使用时间戳确保每次都是新值,触发滚动
         });
 
         wx.showToast({
