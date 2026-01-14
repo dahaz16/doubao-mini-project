@@ -607,7 +607,8 @@ Page({
                         this.setData({
                             [key]: accumulatedText,
                             aiMessage: accumulatedText,
-                            status: 'idle'  // 必须设置为idle才能显示文本
+                            status: 'idle',  // 必须设置为idle才能显示文本
+                            scrollTop: Date.now() // 流式输出时自动滚动到底部
                         });
                     }
                 }
