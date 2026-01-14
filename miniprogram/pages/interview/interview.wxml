@@ -8,8 +8,9 @@
   <view class="middle-section">
     <view class="ai-subtitle-bubble {{status === 'thinking' ? 'thinking-bubble' : ''}}">
       <scroll-view scroll-y="true" scroll-into-view="{{scrollToView}}" class="ai-subtitle-scroll">
-        <view id="subtitle-content">
+        <view>
           <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{status === 'thinking' ? '思考中...' : aiMessage}}</text>
+          <view id="subtitle-bottom"></view>
         </view>
       </scroll-view>
     </view>
