@@ -37,6 +37,13 @@
   border-radius: 30px;
   padding: 20px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  max-height: 185px; /* 5行文字: 22px × 1.5 × 5 + 40px(上下padding) = 185px */
+  overflow: hidden;
+}
+
+.ai-subtitle-scroll {
+  max-height: 145px; /* 5行文字: 22px × 1.5 × 5 = 165px, 减去padding后145px */
+  width: 100%;
 }
 
 /* 思考中状态：彩虹渐变边框动画 */

@@ -410,7 +410,8 @@ Page({
         this.setData({
             aiMessage: testTexts[nextIndex],
             testIndex: nextIndex,
-            status: 'idle'
+            status: 'idle',
+            scrollToView: 'subtitle-content' // 触发滚动到底部
         });
 
         wx.showToast({
@@ -421,7 +422,6 @@ Page({
     },
 
     /**
-
      * 开始录音逻辑
      * 
      * 执行顺序：
