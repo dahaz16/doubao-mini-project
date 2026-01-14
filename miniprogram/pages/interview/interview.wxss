@@ -1,179 +1,205 @@
-/* 基础容器 */
+/* ==================== 全局容器 ==================== */
 .container {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
-  padding: 40rpx 30rpx;
+  position: relative;
+  overflow: hidden;
+  /* 渐变背景 */
+  background: linear-gradient(135deg, #FFF5F7, #F3F4F6, #ECF6FF);
+  background-size: 200% 200%;
+  animation: gradient-flow 8s ease infinite;
 }
 
-/* 顶部区域 */
+@keyframes gradient-flow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ==================== Top 区：AI 虚拟形象 ==================== */
 .top-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 60rpx;
+  padding-top: 40rpx;
 }
 
-.avatar-wrapper {
-  margin-bottom: 30rpx;
-}
-
-.avatar-placeholder {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 60rpx;
-  background: #e0e0e0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24rpx;
-  color: #999;
-}
-
-.chat-bubble {
-  background: white;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  max-width: 600rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.08);
-  font-size: 32rpx;
-  line-height: 1.6;
-  color: #333;
-}
-
-/* 中间区域 - 用户输入显示 */
-.content-section {
-  flex: 1;
-  display: flex;
-  justify-content: flex-end;
-  flex-direction: column;
+.ai-avatar {
+  width: 260rpx; /* 130px × 2 */
+  height: 340rpx; /* 170px × 2 */
   margin-bottom: 40rpx;
 }
 
-.user-feedback {
-  background: #e8f5e9;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  max-width: 600rpx;
-  align-self: flex-end;
-  font-size: 32rpx;
+/* ==================== Middle 区：AI 字幕气泡 ==================== */
+.middle-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 40rpx; /* 左右边距 20px */
+  overflow-y: auto;
+}
+
+.ai-subtitle-bubble {
+  background: rgba(255, 255, 255, 0.9); /* 白色 90% 透明度 */
+  border-radius: 60rpx; /* 30px × 2 */
+  padding: 40rpx; /* 20px × 2 */
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  margin-bottom: 40rpx;
+}
+
+.ai-subtitle-text {
+  font-size: 44rpx; /* 22px × 2 */
+  font-weight: 600; /* 加粗 */
+  color: #373737;
   line-height: 1.6;
-  color: #333;
+}
+
+.ai-subtitle-text.thinking {
+  color: #A6A6A6; /* 思考中文字颜色 */
+}
+
+/* ==================== Bottom 区：用户输入区 ==================== */
+.bottom-section {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  padding: 0 40rpx 40rpx; /* 左右边距 20px，底部 40rpx */
+  padding-bottom: calc(40rpx + env(safe-area-inset-bottom)); /* 适配安全区 */
 }
 
-.cursor {
-  display: inline-block;
-  width: 4rpx;
-  height: 40rpx;
-  background: #4caf50;
-  margin-left: 8rpx;
-  animation: blink 1s infinite;
+/* 用户字幕气泡 */
+.user-subtitle-bubble {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 60rpx;
+  padding: 40rpx;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  margin-bottom: 40rpx;
+  align-self: flex-end;
+  max-width: 80%;
 }
 
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+.user-subtitle-text {
+  font-size: 44rpx; /* 22px × 2，常规不加粗 */
+  color: #373737;
+  line-height: 1.6;
 }
 
-/* 底部控制区域 */
-.controls-section {
-  padding-bottom: 40rpx;
-}
-
-/* 空闲状态 - 单个讲述按钮 */
-.record-button-container {
-  display: flex;
-  justify-content: center;
-}
-
-.record-button {
-  width: 140rpx;
-  height: 140rpx;
-  border-radius: 70rpx;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(102, 126, 234, 0.4);
-  transition: all 0.3s;
-}
-
-.record-button:active {
-  transform: scale(0.95);
-}
-
-.record-button text {
-  color: white;
-  font-size: 32rpx;
-  font-weight: 500;
-}
-
-/* 录音状态 - 取消/计时/发送 */
-.recording-controls-container {
+/* 音频指示器（声波 + 倒计时）*/
+.voice-indicator {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 60rpx;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50rpx; /* 25px × 2 */
+  height: 100rpx; /* 50px × 2 */
+  padding: 0 40rpx;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  margin-bottom: 40rpx;
 }
 
-.cancel-button, .send-button {
-  width: 100rpx;
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.wave-bar {
+  width: 8rpx; /* 4px × 2 */
+  border-radius: 4rpx; /* 2px × 2 */
+  background: #373737;
+  animation: wave-jump 0.8s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(1) { height: 20rpx; animation-delay: 0s; }
+.wave-bar:nth-child(2) { height: 40rpx; animation-delay: 0.1s; }
+.wave-bar:nth-child(3) { height: 60rpx; animation-delay: 0.2s; }
+.wave-bar:nth-child(4) { height: 40rpx; animation-delay: 0.3s; }
+.wave-bar:nth-child(5) { height: 20rpx; animation-delay: 0.4s; }
+
+@keyframes wave-jump {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.5); }
+}
+
+.voice-timer {
+  font-size: 40rpx; /* 20px × 2 */
+  font-weight: 600;
+  color: #373737;
+}
+
+/* 输入框 */
+.input-field {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50rpx;
+  min-height: 100rpx; /* 50px × 2 */
+  max-height: 250rpx; /* 5 行限制 */
+  padding: 25rpx 40rpx;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  font-size: 44rpx;
+  color: #373737;
+  line-height: 1.6;
+  margin-bottom: 40rpx;
+}
+
+/* 控制按钮组 */
+.control-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+/* 长条形按钮（讲述按钮）*/
+.narration-btn,
+.narration-btn-disabled {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100rpx; /* 50px × 2 */
+  border-radius: 50rpx;
+  background: #FFFFFF;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  font-size: 40rpx; /* 20px × 2 */
+  font-weight: 600;
+  color: #373737;
+  border: none;
+  padding: 0 !important;
+  margin: 0;
+  box-sizing: border-box;
+  width: 100% !important;
+  min-width: 100%;
+}
+
+.narration-btn-disabled {
+  color: #A6A6A6;
+  opacity: 0.6;
+}
+
+/* 圆形按钮（切换键盘/语音、取消、发送）*/
+.circle-btn {
+  width: 100rpx; /* 50px × 2 */
   height: 100rpx;
   border-radius: 50rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 48rpx;
-  transition: all 0.3s;
+  background: #FFFFFF;
+  box-shadow: 0 8rpx 16rpx rgba(0, 0, 0, 0.25);
+  padding: 0;
+  margin: 0;
+  border: none;
 }
 
-.cancel-button {
-  background: #ff5252;
-  color: white;
-  box-shadow: 0 4rpx 12rpx rgba(255, 82, 82, 0.3);
+.circle-btn image {
+  width: 50rpx; /* 图标大小 */
+  height: 50rpx;
 }
 
-.send-button {
-  background: #4caf50;
-  color: white;
-  box-shadow: 0 4rpx 12rpx rgba(76, 175, 80, 0.3);
+.circle-btn.disabled {
+  opacity: 0.4;
 }
 
-.cancel-button:active, .send-button:active {
-  transform: scale(0.9);
-}
-
-.recording-timer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10rpx;
-}
-
-.waveform-icon {
-  font-size: 40rpx;
-  color: #667eea;
-  animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.recording-timer text {
-  font-size: 48rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-/* 思考状态 */
-.thinking-indicator {
-  text-align: center;
-  padding: 30rpx;
-  color: #999;
-  font-size: 28rpx;
+/* 按钮重置 */
+button::after {
+  border: none;
 }
