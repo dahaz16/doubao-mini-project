@@ -5,7 +5,7 @@
   height: 100vh;
   position: relative;
   overflow: hidden;
-  /* 渐变背景 - PRD规范: 135度线性渐变 */
+  /* 渐变背景 */
   background: linear-gradient(135deg, #FFF5F7 0%, #F3F4F6 50%, #ECF6FF 100%);
 }
 
@@ -14,13 +14,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: 100px; /* 留出导航栏空间 */
+  padding-top: 100px; /* 预留导航栏空间 */
 }
 
 .ai-avatar {
-  width: 130px; /* PRD规定: 130px */
-  height: 170px; /* PRD规定: 170px */
-  margin-bottom: 20px;
+  width: 130px; /* PRD规定 */
+  height: 170px; /* PRD规定 */
 }
 
 /* ==================== Middle 区：AI 字幕气泡 ==================== */
@@ -28,137 +27,122 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 0 20px; /* 左右边距 20px */
+  padding: 20px;
   overflow-y: auto;
 }
 
 .ai-subtitle-bubble {
-  background: rgba(255, 255, 255, 0.9); /* PRD规定: 白色 90% 透明度 */
-  border-radius: 30px; /* PRD规定: 30px */
-  padding: 20px; /* PRD规定: 高度50px,左右边距20px */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25); /* PRD规定: 0 4px 8px 25%黑 */
-  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 30px; /* PRD规定 */
+  padding: 20px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25); /* PRD规定 */
+}
+
+/* 思考中状态：彩虹渐变边框动画 */
+.ai-subtitle-bubble.thinking-bubble {
+  position: relative;
+  background: white;
+  border: none;
+  box-shadow: none;
+}
+
+.ai-subtitle-bubble.thinking-bubble::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 33px;
+  background: linear-gradient(90deg, #FF6B6B, #FFE66D, #4ECDC4, #45B7D1, #96E6A1, #FF6B6B);
+  background-size: 300% 100%;
+  animation: rainbow-border 3s linear infinite;
+  z-index: -1;
+}
+
+@keyframes rainbow-border {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
 }
 
 .ai-subtitle-text {
-  font-size: 22px; /* PRD规定: 22px */
+  font-size: 22px; /* PRD规定 */
   font-weight: 600; /* PRD规定: 加粗 */
-  color: #373737; /* PRD规定: #373737 */
+  color: #373737; /* PRD规定 */
   line-height: 1.6;
 }
 
 .ai-subtitle-text.thinking {
   color: #A6A6A6; /* PRD规定: 思考中文字颜色 */
+  font-weight: 400;
 }
 
 /* ==================== Bottom 区：用户输入区 ==================== */
 .bottom-section {
   display: flex;
   flex-direction: column;
-  padding: 0 20px 20px; /* 左右边距 20px */
-  padding-bottom: calc(20px + env(safe-area-inset-bottom)); /* 适配iPhone安全区 */
+  padding: 0 20px 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
 }
 
 /* 用户字幕气泡 */
 .user-subtitle-bubble {
   background: rgba(255, 255, 255, 0.9);
-  border-radius: 30px; /* PRD规定: 30px */
+  border-radius: 30px;
   padding: 20px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   margin-bottom: 20px;
-  align-self: flex-end;
-  max-width: 80%;
 }
 
 .user-subtitle-text {
-  font-size: 22px; /* PRD规定: 22px，常规不加粗 */
+  font-size: 22px;
   color: #373737;
   line-height: 1.6;
 }
 
-/* 音频指示器（声波 + 倒计时）*/
-.voice-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(255, 255, 255, 0.9); /* PRD规定: 白色 90% 透明度 */
-  border-radius: 25px; /* PRD规定: 25px */
-  height: 50px; /* PRD规定: 50px */
-  padding: 0 20px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
-  margin-bottom: 20px;
-}
-
-.voice-waveform {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.wave-bar {
-  width: 4px; /* PRD规定: 4px */
-  border-radius: 2px; /* PRD规定: 2px */
-  background: #373737; /* PRD规定: #373737 */
-  animation: wave-jump 0.8s ease-in-out infinite;
-}
-
-.wave-bar:nth-child(1) { height: 10px; animation-delay: 0s; }
-.wave-bar:nth-child(2) { height: 20px; animation-delay: 0.1s; }
-.wave-bar:nth-child(3) { height: 30px; animation-delay: 0.2s; }
-.wave-bar:nth-child(4) { height: 20px; animation-delay: 0.3s; }
-.wave-bar:nth-child(5) { height: 10px; animation-delay: 0.4s; }
-
-@keyframes wave-jump {
-  0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(1.5); }
-}
-
-.voice-timer {
-  font-size: 20px; /* PRD规定: 20px */
-  font-weight: 600; /* PRD规定: 加粗 */
-  color: #373737;
-}
-
-/* 控制按钮组 */
+/* ==================== 控制按钮组 ==================== */
 .control-buttons {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 20px;
+  gap: 15px;
+  width: 100%;
 }
 
-/* 长条形按钮（讲述按钮）*/
-.narration-btn,
-.narration-btn-disabled {
+/* 讲述按钮（长条形）*/
+.narration-btn {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 50px; /* PRD规定: 50px */
-  border-radius: 25px; /* PRD规定: 25px */
-  background: #FFFFFF; /* PRD规定: 纯白色 */
+  gap: 8px;
+  height: 50px; /* PRD规定 */
+  border-radius: 25px; /* PRD规定 */
+  background: #FFFFFF;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
-  font-size: 20px; /* PRD规定: 20px */
-  font-weight: 600; /* PRD规定: 加粗 */
+  font-size: 20px; /* PRD规定 */
+  font-weight: 600;
   color: #373737;
   border: none;
-  padding: 0 !important;
+  padding: 0 20px !important;
   margin: 0;
   box-sizing: border-box;
-  width: 100% !important;
-  min-width: 100%;
 }
 
-.narration-btn-disabled {
+.narration-btn .mic-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.narration-btn.disabled {
+  opacity: 0.5;
   color: #A6A6A6;
-  opacity: 0.6;
 }
 
-/* 圆形按钮（切换键盘/语音、取消、发送）*/
+/* 圆形按钮 */
 .circle-btn {
-  width: 50px; /* PRD规定: 直径 50px */
+  width: 50px; /* PRD规定 */
   height: 50px;
-  min-width: 50px; /* 防止被flex压缩 */
+  min-width: 50px;
   border-radius: 25px;
   display: flex;
   align-items: center;
@@ -168,16 +152,84 @@
   padding: 0 !important;
   margin: 0;
   border: none;
-  flex-shrink: 0; /* 防止被flex压缩 */
+  flex-shrink: 0;
 }
 
 .circle-btn image {
-  width: 25px; /* 图标大小 */
-  height: 25px;
+  width: 28px;
+  height: 28px;
 }
 
 .circle-btn.disabled {
-  opacity: 0.4;
+  opacity: 0.5;
+}
+
+/* 取消按钮（红色背景）*/
+.circle-btn.cancel-btn {
+  background: #FFFFFF;
+}
+
+.cancel-icon {
+  font-size: 24px;
+  font-weight: 300;
+  color: #FF6B6B;
+}
+
+/* 发送按钮（白色背景，绿色箭头）*/
+.circle-btn.send-btn {
+  background: #FFFFFF;
+}
+
+.send-icon {
+  font-size: 22px;
+  font-weight: 600;
+  color: #4ECDC4;
+}
+
+/* ==================== 音频指示器 ==================== */
+.voice-indicator {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  height: 50px;
+  border-radius: 25px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  padding: 0 20px;
+}
+
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wave-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: #373737;
+  animation: wave-jump 0.6s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(1) { height: 8px; animation-delay: 0s; }
+.wave-bar:nth-child(2) { height: 16px; animation-delay: 0.1s; }
+.wave-bar:nth-child(3) { height: 24px; animation-delay: 0.15s; }
+.wave-bar:nth-child(4) { height: 20px; animation-delay: 0.2s; }
+.wave-bar:nth-child(5) { height: 24px; animation-delay: 0.25s; }
+.wave-bar:nth-child(6) { height: 16px; animation-delay: 0.3s; }
+.wave-bar:nth-child(7) { height: 8px; animation-delay: 0.35s; }
+
+@keyframes wave-jump {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.8); }
+}
+
+.voice-timer {
+  font-size: 20px;
+  font-weight: 600;
+  color: #373737;
 }
 
 /* 按钮重置 */

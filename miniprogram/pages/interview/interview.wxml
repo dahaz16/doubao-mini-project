@@ -6,7 +6,7 @@
 
   <!-- Middle 区：AI 字幕气泡 -->
   <view class="middle-section">
-    <view class="ai-subtitle-bubble">
+    <view class="ai-subtitle-bubble {{status === 'thinking' ? 'thinking-bubble' : ''}}">
       <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">
         {{status === 'thinking' ? '思考中...' : aiMessage}}
       </text>
@@ -20,39 +20,62 @@
       <text class="user-subtitle-text">{{userInput}}</text>
     </view>
 
-    <!-- 录音状态：音频指示器（声波 + 倒计时）-->
-    <view class="voice-indicator" wx:if="{{status === 'recording'}}">
-      <view class="voice-waveform">
-        <view class="wave-bar"></view>
-        <view class="wave-bar"></view>
-        <view class="wave-bar"></view>
-        <view class="wave-bar"></view>
-        <view class="wave-bar"></view>
-      </view>
-      <text class="voice-timer">{{recordingTime}}</text>
-    </view>
-
     <!-- 控制按钮组 -->
     <view class="control-buttons">
-      <!-- 默认状态：切换键盘按钮（左）+ 讲述按钮（右）-->
-      <button wx:if="{{status === 'idle'}}" class="circle-btn" bindtap="handleSwitchToKeyboard">
-        <image src="/images/switch_to_keyboard_btn.png" mode="aspectFit"></image>
-      </button>
-      <button wx:if="{{status === 'idle'}}" class="narration-btn" bindtap="handleMicToggle">讲述</button>
+      <!-- ===== 默认状态：讲述按钮(长条) + 键盘按钮(右侧) ===== -->
+      <block wx:if="{{status === 'idle'}}">
+        <button class="narration-btn" bindtap="handleMicToggle">
+          <image class="mic-icon" src="/images/microphone.png" mode="aspectFit"></image>
+          <text>讲述</text>
+        </button>
+        <button class="circle-btn" bindtap="handleSwitchToKeyboard">
+          <image src="/images/switch_to_keyboard_btn.png" mode="aspectFit"></image>
+        </button>
+      </block>
 
-      <!-- 录音状态：取消按钮（左）+ 发送按钮（右）-->
-      <button wx:if="{{status === 'recording'}}" class="circle-btn" bindtap="handleCancelRecording">
-        <image src="/images/cancel_speak_btn.png" mode="aspectFit"></image>
-      </button>
-      <button wx:if="{{status === 'recording'}}" class="circle-btn send-btn" bindtap="handleMicToggle">
-        <image src="/images/send_msg_btn.png" mode="aspectFit"></image>
-      </button>
+      <!-- ===== 录音状态：取消(左) + 音频指示器(中) + 发送(右) ===== -->
+      <block wx:if="{{status === 'recording'}}">
+        <button class="circle-btn cancel-btn" bindtap="handleCancelRecording">
+          <text class="cancel-icon">×</text>
+        </button>
+        <view class="voice-indicator">
+          <view class="voice-waveform">
+            <view class="wave-bar"></view>
+            <view class="wave-bar"></view>
+            <view class="wave-bar"></view>
+            <view class="wave-bar"></view>
+            <view class="wave-bar"></view>
+            <view class="wave-bar"></view>
+            <view class="wave-bar"></view>
+          </view>
+          <text class="voice-timer">{{recordingTime}}</text>
+        </view>
+        <button class="circle-btn send-btn" bindtap="handleMicToggle">
+          <text class="send-icon">↑</text>
+        </button>
+      </block>
 
-      <!-- 思考中状态：禁用按钮 -->
-      <button wx:if="{{status === 'thinking'}}" class="circle-btn disabled" disabled>
-        <image src="/images/switch_to_keyboard_btn_disabled.png" mode="aspectFit"></image>
-      </button>
-      <button wx:if="{{status === 'thinking'}}" class="narration-btn-disabled" disabled>请稍等</button>
+      <!-- ===== 思考中状态：禁用讲述按钮 + 禁用键盘按钮 ===== -->
+      <block wx:if="{{status === 'thinking'}}">
+        <button class="narration-btn disabled" disabled>
+          <image class="mic-icon" src="/images/microphone.png" mode="aspectFit"></image>
+          <text>讲述</text>
+        </button>
+        <button class="circle-btn disabled" disabled>
+          <image src="/images/switch_to_keyboard_btn_disabled.png" mode="aspectFit"></image>
+        </button>
+      </block>
+
+      <!-- ===== AI说话状态：与默认状态相同 ===== -->
+      <block wx:if="{{status === 'talking'}}">
+        <button class="narration-btn" bindtap="handleMicToggle">
+          <image class="mic-icon" src="/images/microphone.png" mode="aspectFit"></image>
+          <text>讲述</text>
+        </button>
+        <button class="circle-btn" bindtap="handleSwitchToKeyboard">
+          <image src="/images/switch_to_keyboard_btn.png" mode="aspectFit"></image>
+        </button>
+      </block>
     </view>
   </view>
 </view>
