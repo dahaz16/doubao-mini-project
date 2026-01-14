@@ -229,7 +229,7 @@ def chat_with_doubao(request: ChatRequest):
         raise HTTPException(status_code=400, detail="消息列表不能为空")
     
     # 系统提示词 - 定义AI的角色
-    system_prompt = "你是一名专业的回忆录采访者，请采访用户的回忆，输出的问题在20字以内。"
+    system_prompt = "你是一名专业的回忆录采访者，请采访用户的回忆，输出的问题在60字左右。"
     messages = [{"role": "system", "content": system_prompt}] + request.messages
     
     # 获取AI回复
@@ -287,7 +287,7 @@ async def chat_websocket_endpoint(websocket: WebSocket):
         
         # 第二步：添加系统提示词（如果没有）
         # 系统提示词定义了AI的角色和行为
-        system_prompt = "你是一名专业的回忆录采访者，请采访用户的回忆，输出的问题在20字以内。"
+        system_prompt = "你是一名专业的回忆录采访者，请采访用户的回忆，输出的问题在60字左右。"
         if not messages or messages[0].get("role") != "system":
             messages = [{"role": "system", "content": system_prompt}] + messages
         
