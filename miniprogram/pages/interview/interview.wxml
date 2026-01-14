@@ -1,7 +1,7 @@
 <view class="container">
   <!-- Top 区：AI 虚拟形象 -->
   <view class="top-section">
-    <image class="ai-avatar" src="/images/AI_Avatar.png" mode="scaleToFill"></image>
+    <image class="ai-avatar" src="/images/AI_Avatar.png" mode="aspectFit"></image>
   </view>
 
   <!-- Middle 区：AI 字幕气泡 -->
