@@ -42,7 +42,7 @@
 }
 
 .ai-subtitle-scroll {
-  max-height: 145px; /* 5行文字: 22px × 1.5 × 5 = 165px, 减去padding后145px */
+  max-height: 115.5px; /* 3.5行文字: 22px × 1.5 × 3.5 = 115.5px */
   width: 100%;
 }
 
