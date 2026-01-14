@@ -604,8 +604,8 @@ Page({
                 });
             }
 
-            // 50ms后显示下一个chunk
-            setTimeout(() => displayNextChunk(), 50);
+            // 20ms后显示下一个chunk
+            setTimeout(() => displayNextChunk(), 20);
         };
 
         // 连接成功后发送消息
