@@ -1,4 +1,4 @@
-<view class="container {{isLowEnd ? 'static-bg' : 'animated-bg'}}">
+<view class="container">
   <!-- 主标题区域 -->
   <view class="title-section">
     <text class="main-title">感谢参与测试</text>

@@ -12,22 +12,6 @@
         "navigationBarTextStyle": "black",
         "navigationStyle": "default"
     },
-    "tabBar": {
-        "list": [
-            {
-                "pagePath": "pages/index/index",
-                "text": "首页"
-            },
-            {
-                "pagePath": "pages/records/records",
-                "text": "记录"
-            },
-            {
-                "pagePath": "pages/me/me",
-                "text": "我的"
-            }
-        ]
-    },
     "style": "v2",
     "sitemapLocation": "sitemap.json",
     "lazyCodeLoading": "requiredComponents"

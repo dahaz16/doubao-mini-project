@@ -7,24 +7,10 @@
   height: 100vh;
   padding: 80rpx 40rpx;
   padding-bottom: calc(80rpx + env(safe-area-inset-bottom));
-}
-
-/* 流光渐变背景 - 动画版 */
-.animated-bg {
-  background: linear-gradient(135deg, #FFF5F7, #F3F4F6, #ECF6FF);
-  background-size: 400% 400%;
-  animation: gradientFlow 8s ease infinite;
-}
-
-@keyframes gradientFlow {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-/* 流光渐变背景 - 静态版（低端机降级） */
-.static-bg {
-  background: linear-gradient(135deg, #FFF5F7, #F3F4F6, #ECF6FF);
+  background-image: url('/images/homepage_background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 /* 标题区域 */
@@ -52,7 +38,8 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 24rpx;
+  gap: 40rpx;
+  padding: 0 40rpx;
 }
 
 .primary-btn,
@@ -78,8 +65,8 @@
 }
 
 .btn-icon {
-  width: 48rpx;
-  height: 48rpx;
+  width: 38rpx;
+  height: 38rpx;
 }
 
 /* 弹窗遮罩层 */
