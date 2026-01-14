@@ -18,8 +18,8 @@
 
 .ai-avatar {
   display: block;
-  width: 380px;
-  height: 171px; /* 380 ÷ 2.22 = 171, 匹配图片原始比例 1200×540 */
+  width: 360px;
+  height: 180px;
   margin-top: 108px;
 }
 
