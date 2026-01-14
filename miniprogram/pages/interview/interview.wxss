@@ -66,10 +66,10 @@
 }
 
 .ai-subtitle-text {
-  font-size: 22px; /* PRD规定 */
-  font-weight: 600; /* PRD规定: 加粗 */
-  color: #373737; /* PRD规定 */
-  line-height: 1.6;
+  font-size: 22px;
+  font-weight: 600;
+  color: #373737;
+  line-height: 1.2;
 }
 
 .ai-subtitle-text.thinking {

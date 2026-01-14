@@ -1,15 +1,13 @@
 <view class="container">
   <!-- Top 区：AI 虚拟形象 -->
   <view class="top-section">
-    <image class="ai-avatar" src="/images/AI_Avatar.png" mode="aspectFit"></image>
+    <image class="ai-avatar" src="/images/AI_Avatar.png" mode="scaleToFill"></image>
   </view>
 
   <!-- Middle 区：AI 字幕气泡 -->
   <view class="middle-section">
     <view class="ai-subtitle-bubble {{status === 'thinking' ? 'thinking-bubble' : ''}}">
-      <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">
-        {{status === 'thinking' ? '思考中...' : aiMessage}}
-      </text>
+      <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{status === 'thinking' ? '思考中...' : aiMessage}}</text>
     </view>
   </view>
 
