@@ -468,7 +468,7 @@ Page({
         this.setData({
             status: 'recording',
             seconds: 0,
-            recordingTime: "60",
+            recordingTime: "00:59",
             userInput: ""
         });
 
