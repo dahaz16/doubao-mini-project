@@ -128,7 +128,7 @@
   display: flex;
   align-items: center;
   width: 675rpx;
-  gap: 15px; /* 固定物理间距 */
+  gap: 15rpx; /* 固定物理间距 */
   box-sizing: border-box;
 }
 
