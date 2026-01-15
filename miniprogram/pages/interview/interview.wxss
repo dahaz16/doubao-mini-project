@@ -88,7 +88,7 @@
 /* ==================== Bottom 区：用户输入区 ==================== */
 .bottom-section {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   padding: 0 20px 20px;
   padding-bottom: calc(20px + env(safe-area-inset-bottom));
 }
@@ -112,8 +112,8 @@
 .control-buttons {
   display: flex;
   align-items: center;
-  gap: 20px;
-  width: 100%;
+  width: 675rpx;
+  gap: 15px;
 }
 
 /* 讲述按钮（长条形）*/
@@ -123,11 +123,11 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 50px; /* PRD规定 */
-  border-radius: 25px; /* PRD规定 */
+  height: 50px;
+  border-radius: 25px;
   background: #FFFFFF;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
-  font-size: 20px; /* PRD规定 */
+  font-size: 20px;
   font-weight: 600;
   color: #373737;
   border: none;
@@ -148,7 +148,7 @@
 
 /* 圆形按钮 */
 .circle-btn {
-  width: 50px; /* PRD规定 */
+  width: 50px;
   height: 50px;
   min-width: 50px;
   border-radius: 25px;
