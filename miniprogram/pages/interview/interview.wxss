@@ -219,9 +219,9 @@
 
 /* ==================== 音频指示器 ==================== */
 .voice-indicator {
-  width: 194px; /* 154px内容 + 40px内边距 */
-  min-width: 194px;
-  max-width: 194px;
+  width: 302rpx;
+  min-width: 302rpx;
+  max-width: 302rpx;
   display: flex;
   align-items: center;
   justify-content: center;
