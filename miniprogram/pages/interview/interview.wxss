@@ -46,11 +46,16 @@
   width: 100%;
 }
 
-/* 隐藏滚动条 */
-.ai-subtitle-scroll::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+/* 隐藏滚动条 - 多种方法尝试 */
+.ai-subtitle-scroll ::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.ai-subtitle-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
 }
 
 /* 思考中状态：彩虹渐变边框动画 */
@@ -173,7 +178,7 @@
   /* 清除button默认样式 */
   padding: 0;
   margin: 0;
-  border: none;
+  border: 2px solid red; /* 调试边框 */
   flex-shrink: 0;
   box-sizing: border-box;
   line-height: normal;
