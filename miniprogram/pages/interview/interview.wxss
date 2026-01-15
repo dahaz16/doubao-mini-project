@@ -115,7 +115,7 @@
 .control-buttons {
   display: flex;
   align-items: center;
-  width: 675rpx !important;
+  width: 675rpx;
   gap: 15px;
 }
 
@@ -133,10 +133,12 @@
   font-size: 20px;
   font-weight: 600;
   color: #373737;
+  /* 清除button默认样式 */
   border: none;
-  padding: 0 20px !important;
+  padding: 0 20px;
   margin: 0;
   box-sizing: border-box;
+  line-height: normal;
 }
 
 .narration-btn .mic-icon {
@@ -154,21 +156,26 @@
   width: 50px;
   height: 50px;
   min-width: 50px;
+  max-width: 50px;
   border-radius: 25px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #FFFFFF;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
-  padding: 0 !important;
+  /* 清除button默认样式 */
+  padding: 0;
   margin: 0;
   border: none;
   flex-shrink: 0;
+  box-sizing: border-box;
+  line-height: normal;
+  overflow: hidden;
 }
 
 .circle-btn image {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
 }
 
 .circle-btn.disabled {
@@ -243,7 +250,15 @@
   color: #FFFFFF;
 }
 
-/* 按钮重置 */
+/* 按钮重置 - 清除微信小程序button默认样式 */
+button {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  line-height: normal;
+}
+
 button::after {
   border: none;
 }
