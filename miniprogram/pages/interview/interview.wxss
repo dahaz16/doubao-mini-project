@@ -46,6 +46,13 @@
   width: 100%;
 }
 
+/* 隐藏滚动条 */
+.ai-subtitle-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* 思考中状态：彩虹渐变边框动画 */
 .ai-subtitle-bubble.thinking-bubble {
   position: relative;
