@@ -6,3 +6,25 @@ page {
   height: 100%;
   box-sizing: border-box;
 }
+
+button {
+  width: auto;
+  margin-left: 0;
+  margin-right: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background-color: transparent;
+  border-radius: 0;
+  line-height: normal;
+}
+
+/* 去除系统点击高亮 */
+button::after {
+  border: none;
+}
+
+/* 解决部分机型 active 变色 */
+button[plain] {
+  border: none;
+}

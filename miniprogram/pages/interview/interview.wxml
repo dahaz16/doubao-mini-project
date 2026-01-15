@@ -41,9 +41,9 @@
 
       <!-- ===== 录音状态：取消(左) + 音频指示器(中) + 发送(右) ===== -->
       <block wx:if="{{status === 'recording'}}">
-        <button class="circle-btn cancel-btn" bindtap="handleCancelRecording">
+        <div class="circle-btn cancel-btn" bindtap="handleCancelRecording">
           <image src="/images/cancel_speak_btn.png" mode="aspectFit"></image>
-        </button>
+        </div>
         <view class="voice-indicator">
           <view class="voice-waveform">
             <view class="wave-bar"></view>
@@ -55,9 +55,9 @@
           </view>
           <text class="voice-timer">{{recordingTime}}</text>
         </view>
-        <button class="circle-btn send-btn" bindtap="handleMicToggle">
+        <div class="circle-btn send-btn" bindtap="handleMicToggle">
           <image src="/images/send_msg_btn.png" mode="aspectFit"></image>
-        </button>
+        </div>
       </block>
 
       <!-- ===== 思考中状态：禁用讲述按钮 + 禁用键盘按钮 ===== -->
