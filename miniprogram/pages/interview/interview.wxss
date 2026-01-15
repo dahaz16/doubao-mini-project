@@ -44,7 +44,7 @@
 .ai-subtitle-scroll {
   max-height: 115.5px; /* 3.5行文字: 22px × 1.5 × 3.5 = 115.5px */
   width: 100%;
-  scrollbar-width: none; /* Firefox - 测试这个是否有效 */
+  scrollbar-width: none; /* 隐藏滚动条 */
 }
 
 /* 思考中状态：彩虹渐变边框动画 */
