@@ -44,18 +44,7 @@
 .ai-subtitle-scroll {
   max-height: 115.5px; /* 3.5行文字: 22px × 1.5 × 3.5 = 115.5px */
   width: 100%;
-}
-
-/* 隐藏滚动条 - 多种方法尝试 */
-.ai-subtitle-scroll ::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-}
-
-.ai-subtitle-scroll {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox - 测试这个是否有效 */
 }
 
 /* 思考中状态：彩虹渐变边框动画 */
@@ -186,8 +175,8 @@
 }
 
 .circle-btn image {
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
 }
 
 .circle-btn.disabled {
