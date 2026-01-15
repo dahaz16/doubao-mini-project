@@ -44,7 +44,18 @@
 .ai-subtitle-scroll {
   max-height: 115.5px; /* 3.5行文字: 22px × 1.5 × 3.5 = 115.5px */
   width: 100%;
-  scrollbar-width: none; /* 隐藏滚动条 */
+}
+
+/* 隐藏滚动条 - 微信小程序 */
+.ai-subtitle-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.ai-subtitle-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
 }
 
 /* 思考中状态：彩虹渐变边框动画 */
@@ -117,7 +128,7 @@
   display: flex;
   align-items: center;
   width: 675rpx;
-  gap: 15px;
+  gap: 15px; /* 固定物理间距 */
   box-sizing: border-box;
 }
 
