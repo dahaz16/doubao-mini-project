@@ -11,7 +11,7 @@
         class="ai-subtitle-scroll" 
         scroll-y="true" 
         scroll-top="{{scrollTop}}"
-        show-scrollbar="{{false}}">
+        show-scrollbar="false">
         <view class="ai-subtitle-content">
           <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{aiMessage}}</text>
         </view>
