@@ -118,6 +118,7 @@
   align-items: center;
   width: 675rpx;
   gap: 15px;
+  box-sizing: border-box;
 }
 
 /* 讲述按钮（长条形）*/
