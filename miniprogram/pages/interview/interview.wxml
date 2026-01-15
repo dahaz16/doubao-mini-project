@@ -6,14 +6,10 @@
 
   <!-- Middle 区：AI 字幕气泡 -->
   <view class="middle-section">
-    <view class="ai-subtitle-bubble" wx:if="{{aiMessage && status === 'idle'}}">
-      <scroll-view 
-        class="ai-subtitle-scroll" 
-        scroll-y="true" 
-        scroll-top="{{scrollTop}}"
-        show-scrollbar="false">
-        <view class="ai-subtitle-content">
-          <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{aiMessage}}</text>
+    <view class="ai-subtitle-bubble {{status === 'thinking' ? 'thinking-bubble' : ''}}">
+      <scroll-view scroll-y="true" scroll-top="{{scrollTop}}" class="ai-subtitle-scroll">
+        <view>
+          <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{status === 'thinking' ? '思考中...' : aiMessage}}</text>
         </view>
       </scroll-view>
     </view>
