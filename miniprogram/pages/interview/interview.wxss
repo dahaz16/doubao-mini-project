@@ -219,9 +219,9 @@
 
 /* ==================== 音频指示器 ==================== */
 .voice-indicator {
-  width: 154px;
-  min-width: 154px;
-  max-width: 154px;
+  width: 194px; /* 154px内容 + 40px内边距 */
+  min-width: 194px;
+  max-width: 194px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -232,6 +232,7 @@
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   padding: 0 20px;
   flex-shrink: 0;
+  box-sizing: border-box; /* 关键：确保padding包含在宽度内 */
 }
 
 .voice-waveform {

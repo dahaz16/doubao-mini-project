@@ -7,7 +7,11 @@
   <!-- Middle 区：AI 字幕气泡 -->
   <view class="middle-section">
     <view class="ai-subtitle-bubble {{status === 'thinking' ? 'thinking-bubble' : ''}}">
-      <scroll-view scroll-y="true" scroll-top="{{scrollTop}}" class="ai-subtitle-scroll">
+      <scroll-view 
+        scroll-y="true" 
+        scroll-top="{{scrollTop}}" 
+        class="ai-subtitle-scroll"
+        show-scrollbar="{{false}}">
         <view>
           <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{status === 'thinking' ? '思考中...' : aiMessage}}</text>
         </view>
