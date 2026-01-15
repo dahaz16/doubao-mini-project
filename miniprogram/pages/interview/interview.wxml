@@ -48,7 +48,6 @@
             <view class="wave-bar"></view>
             <view class="wave-bar"></view>
             <view class="wave-bar"></view>
-            <view class="wave-bar"></view>
           </view>
           <text class="voice-timer">{{recordingTime}}</text>
         </view>
