@@ -128,7 +128,6 @@
   display: flex;
   align-items: center;
   width: 675rpx;
-  gap: 15rpx; /* 固定物理间距 */
   box-sizing: border-box;
 }
 
@@ -178,7 +177,7 @@
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   /* 清除button默认样式 */
   padding: 0;
-  margin: 0;
+  margin: 0; /* 确保无margin */
   border: none;
   flex-shrink: 0;
   box-sizing: border-box;
@@ -231,6 +230,7 @@
   background: #373737;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   padding: 0 20px;
+  margin: 0 15px; /* 左右15px间距 */
   flex-shrink: 0;
   box-sizing: border-box; /* 关键：确保padding包含在宽度内 */
 }
