@@ -30,4 +30,24 @@
       <button class="modal-btn" bindtap="onCloseModal">好的</button>
     </view>
   </view>
+
+  <!-- 授权用户信息弹窗 -->
+  <view class="modal-mask" wx:if="{{showAuthModal}}">
+    <view class="modal-container auth-modal" catchtap="stopPropagation">
+      <view class="auth-title">完善个人信息</view>
+      <view class="auth-desc">为了更好的体验，请完善您的头像和昵称</view>
+      
+      <button class="avatar-wrapper" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
+        <image class="auth-avatar" src="{{avatarUrl || '/images/default_avatar.png'}}" mode="aspectFill"></image>
+        <view class="avatar-tip" wx:if="{{!avatarUrl}}">点击选择头像</view>
+      </button>
+      
+      <view class="input-wrapper">
+        <text class="input-label">昵称</text>
+        <input type="nickname" class="auth-input" placeholder="请输入昵称" bind:change="onNicknameChange" bindinput="onNicknameInput" value="{{nickname}}"/>
+      </view>
+      
+      <button class="modal-btn auth-btn" bindtap="onSubmitAuth" disabled="{{!nickname || !avatarUrl}}">确认并进入</button>
+    </view>
+  </view>
 </view>

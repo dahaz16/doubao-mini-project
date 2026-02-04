@@ -1,3 +1,9 @@
+/* ==================== 页面级别禁止滚动 ==================== */
+page {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* ==================== 全局容器 ==================== */
 .container {
   display: flex;
@@ -29,7 +35,7 @@
   display: flex;
   flex-direction: column;
   padding: 0 20px 20px 20px;
-  overflow-y: auto;
+  overflow: hidden; /* 禁止滚动 */
 }
 
 .ai-subtitle-bubble {
@@ -42,20 +48,23 @@
 }
 
 .ai-subtitle-scroll {
-  max-height: 115.5px; /* 3.5行文字: 22px × 1.5 × 3.5 = 115.5px */
+  max-height: 148.5px; /* 4.5行文字: 22px × 1.5 × 4.5 = 148.5px */
   width: 100%;
 }
 
 /* 隐藏滚动条 - 微信小程序 */
 .ai-subtitle-scroll::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
 .ai-subtitle-scroll {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE/Edge */
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
 }
 
 /* 思考中状态：彩虹渐变边框动画 */
@@ -102,25 +111,47 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0;
-  padding-bottom: 28px;
+  padding-bottom: 40px;
+}
+
+/* 用户字幕滚动容器 */
+.user-subtitle-scroll {
+  max-height: 185px; /* 4.5行文字: 22px × 1.6 × 4.5 + 40px(padding) = 198.4px, 留一些空间显示4.5行 */
+  width: 675rpx;
+  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 30px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 隐藏用户字幕滚动条 */
+.user-subtitle-scroll::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+.user-subtitle-scroll {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE/Edge */
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
 }
 
 /* 用户字幕气泡 */
 .user-subtitle-bubble {
-  width: 675rpx;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 30px;
-  padding: 20px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
-  margin-bottom: 20px;
+  width: 100%;
   box-sizing: border-box;
 }
 
 .user-subtitle-text {
   font-size: 22px;
+  font-weight: 600;
   color: #373737;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 /* ==================== 控制按钮组 ==================== */

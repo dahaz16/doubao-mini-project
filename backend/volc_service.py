@@ -413,10 +413,57 @@ async def synthesize_speech_v3_async(text):
     import base64
     return base64.b64encode(audio_buffer).decode('utf-8')
 
-def synthesize_speech(text, output_dir=None):
+def synthesize_speech(text, user_id=None, text_id=None, voice_id=None, output_dir=None):
+    """
+    语音合成函数(同步包装器)
+    
+    Args:
+        text: 要合成的文本
+        user_id: 用户ID(用于记录数据库)
+        text_id: 文本ID(用于记录数据库)
+        voice_id: 音频ID(用于记录数据库)
+        output_dir: 输出目录(已废弃)
+        
+    Returns:
+        base64 编码的音频数据
+    """
+    import time
+    start_time = time.time()
+    
     # Wrapper to run async V3 code synchronously
     try:
-        return asyncio.run(synthesize_speech_v3_async(text))
+        audio_base64 = asyncio.run(synthesize_speech_v3_async(text))
+        
+        # 计算耗时
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        # 记录到数据库
+        if user_id and text_id and audio_base64:
+            try:
+                from db_logger import log_tts_call, get_model_id_by_name
+                
+                # 获取 TTS 模型ID (Vivi 2.0)
+                model_id = get_model_id_by_name("Vivi 2.0")
+                if not model_id:
+                    # 如果找不到,使用默认值或查询第一个 TTS 模型
+                    from database import get_db_connection
+                    with get_db_connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute("SELECT model_id FROM base_models WHERE model_type = 'TTS' LIMIT 1")
+                            row = cursor.fetchone()
+                            model_id = row[0] if row else 1
+                
+                # 估算成本 (这里需要根据实际情况计算,暂时使用固定值)
+                # 实际应该根据字符数和模型定价计算
+                cost = len(text) * 0.0001  # 示例:每字符 0.0001 元
+                
+                log_tts_call(user_id, text_id, voice_id, model_id, duration_ms, cost)
+            except Exception as e:
+                import logging
+                logging.error(f"记录 TTS 调用失败: {e}")
+        
+        return audio_base64
     except Exception as e:
         print(f"[TTS_V3 ERROR] {e}")
         return None
+

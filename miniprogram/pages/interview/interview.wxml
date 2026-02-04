@@ -11,6 +11,7 @@
         scroll-y="true" 
         scroll-top="{{scrollTop}}" 
         class="ai-subtitle-scroll"
+        enable-flex="true"
         show-scrollbar="{{false}}">
         <view>
           <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{status === 'thinking' ? '思考中...' : aiMessage}}</text>
@@ -21,10 +22,17 @@
 
   <!-- Bottom 区：用户输入区 -->
   <view class="bottom-section">
-    <!-- 用户字幕气泡（录音时显示实时识别结果）-->
-    <view class="user-subtitle-bubble" wx:if="{{userInput && status === 'recording'}}">
-      <text class="user-subtitle-text">{{userInput}}</text>
-    </view>
+    <!-- 用户字幕气泡 -->
+    <scroll-view 
+        scroll-y="true" 
+        scroll-top="{{userScrollTop}}" 
+        class="user-subtitle-scroll"
+        enable-flex="true"
+        wx:if="{{userInput && status === 'recording'}}">
+        <view class="user-subtitle-bubble">
+            <text class="user-subtitle-text">{{userInput}}</text>
+        </view>
+    </scroll-view>
 
     <!-- 控制按钮组 -->
     <view class="control-buttons">

@@ -34,7 +34,7 @@ Page({
         status: 'idle',
 
         // AI显示的消息（当前AI回复）
-        aiMessage: "您好呀，今天就随便唠唠，说说您以前那些有意思的事儿呗。",
+        aiMessage: "你好呀!我叫念念,",
 
         // 用户输入（语音识别结果）
         userInput: "",
@@ -50,13 +50,19 @@ Page({
 
         // 对话历史消息列表
         // 格式: [{role: 'user/assistant', content: '...'}]
-        messages: [],
+        userInput: '',
+        aiMessage: '',
+        recordingTime: '00:00',
+        currentTextId: null,  // 当前对话的 user_text_id
 
         // ASR WebSocket连接状态
         socketOpen: false,
 
         // 音频文件计数器（用于生成唯一文件名，防止冲突）
-        audioCounter: 0
+        audioCounter: 0,
+
+        // 用户字幕滚动位置
+        userScrollTop: 0
     },
 
     // ========================================================================
@@ -87,39 +93,44 @@ Page({
      * 初始化音频播放器和录音管理器
      */
     onLoad() {
+        // 获取用户ID
+        const userId = wx.getStorageSync('userId');
+
+        // 调用后端接口获取最新 AI 消息
+        if (userId) {
+            wx.request({
+                url: getApp().globalData.baseUrl + '/api/get_latest_ai_message',
+                method: 'GET',
+                data: { user_id: userId },
+                success: (res) => {
+                    if (res.data && res.data.code === 0 && res.data.data.ai_message) {
+                        this.setData({ aiMessage: res.data.data.ai_message });
+                        console.log("✅ 加载最新 AI 消息:", res.data.data.ai_message);
+                    } else {
+                        // 没有历史消息，使用默认文案
+                        console.log("📭 未找到历史 AI 消息，使用默认文案");
+                        this.setData({ aiMessage: "你好呀!我叫念念," });
+                    }
+                },
+                fail: (err) => {
+                    console.error("❌ 获取最新 AI 消息失败:", err);
+                    // 接口失败也使用默认文案
+                    this.setData({ aiMessage: "你好呀!我叫念念," });
+                }
+            });
+        } else {
+            // 没有 userId，使用默认文案
+            this.setData({ aiMessage: "你好呀!我叫念念," });
+        }
+
         // 初始化对话历史（AI的开场白）
         this.setData({
             messages: [{ role: 'assistant', content: this.data.aiMessage }]
         });
 
         // ==================== 初始化音频播放器 ====================
-        this.player = wx.createInnerAudioContext();
-        this.player.onPlay(() => console.log('音频播放开始'));
-
-        // 音频播放结束回调（只绑定一次，避免重复）
-        this.player.onEnded(() => {
-            console.log('音频播放结束');
-
-            // 清理临时音频文件
-            if (this.currentAudioPath && this.currentAudioPath.startsWith(wx.env.USER_DATA_PATH)) {
-                wx.getFileSystemManager().unlink({
-                    filePath: this.currentAudioPath,
-                    success: () => console.log('🗑️ 临时文件已删除'),
-                    fail: (err) => console.warn('删除临时文件失败:', err)
-                });
-            }
-
-            // 标记播放结束，尝试播放下一段
-            this.isPlaying = false;
-            this.playNextAudio();
-        });
-
-        // 音频播放错误回调
-        this.player.onError((err) => {
-            console.error('音频播放错误:', err);
-            this.isPlaying = false;
-            this.playNextAudio();
-        });
+        // this.initAudioPlayer(); // 兼容旧模式
+        this.initWebAudio();    // v3.4 PCM 模式
 
         // ==================== 初始化录音管理器 ====================
         this.initRecorderManager();
@@ -128,16 +139,177 @@ Page({
     },
 
     /**
+     * 初始化音频播放实例
+     * 防御式编程：确保播放器实例始终可用
+     */
+    initAudioPlayer() {
+        if (this.player) {
+            try { this.player.destroy(); } catch (e) { }
+        }
+
+        this.player = wx.createInnerAudioContext();
+        this.player.onPlay(() => console.log('音频播放开始'));
+
+        // 初始化音频队列
+        this.audioQueue = this.audioQueue || [];
+        this.isPlaying = false;
+
+        // 音频播放结束回调
+        this.player.onEnded(() => {
+            console.log('音频播放结束');
+            if (this.currentAudioPath && this.currentAudioPath.startsWith(wx.env.USER_DATA_PATH)) {
+                wx.getFileSystemManager().unlink({
+                    filePath: this.currentAudioPath,
+                    success: () => console.log('🗑️ 临时文件已删除'),
+                    fail: (err) => console.warn('删除临时文件失败:', err)
+                });
+            }
+            this.isPlaying = false;
+            this.playNextAudio();
+        });
+
+        // 音频播放错误回调
+        this.player.onError((err) => {
+            console.error('音频播放错误:', err);
+            // 如果报错是 audioInstance is not set，自动重试初始化
+            if (err.errMsg && err.errMsg.includes('audioInstance is not set')) {
+                console.warn('🔄 检测到播放器实例未设置，尝试重新初始化...');
+                this.initAudioPlayer();
+            }
+            this.isPlaying = false;
+            this.playNextAudio();
+        });
+    },
+
+    /**
+     * ==================== WebAudio PCM 播放器初始化 (v3.4) ====================
+     * 用于无缝拼接 PCM 裸流
+     */
+    initWebAudio() {
+        if (!wx.createWebAudioContext) {
+            console.error("当前微信版本不支持 WebAudioContext，将回退到普通播放模式");
+            return;
+        }
+
+        console.log("初始化 WebAudioContext (PCM 模式)");
+        this.audioCtx = wx.createWebAudioContext();
+
+        // 创建增益节点（用于音量控制，后期可扩展）
+        this.gainNode = this.audioCtx.createGain();
+        this.gainNode.connect(this.audioCtx.destination);
+
+        // 播放状态管理
+        this.nextStartTime = 0; // 下一个音频分片的预定开始时间
+        this.pcmSampleRate = 24000; // 后端下发的 PCM 采样率
+    },
+
+    /**
+     * 播放收到的 PCM Base64 分片
+     * @param {string} b64Data - Base64 编码的 PCM 裸流
+     */
+    playPCMChunk(b64Data) {
+        if (!this.audioCtx) return;
+
+        try {
+            // 1. 将 Base64 转为 ArrayBuffer
+            const arrayBuffer = wx.base64ToArrayBuffer(b64Data);
+
+            // 2. 将 Int16 PCM 数据转换为 Float32 (WebAudio 要求)
+            const int16View = new Int16Array(arrayBuffer);
+            const float32Data = new Float32Array(int16View.length);
+            for (let i = 0; i < int16View.length; i++) {
+                // 归一化：将 -32768~32767 映射到 -1.0~1.0
+                float32Data[i] = int16View[i] / 32768.0;
+            }
+
+            // 3. 创建 AudioBuffer
+            const audioBuffer = this.audioCtx.createBuffer(1, float32Data.length, this.pcmSampleRate);
+            audioBuffer.copyToChannel(float32Data, 0);
+
+            // 4. 创建 BufferSource 并调度播放
+            const source = this.audioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.gainNode);
+
+            // 计算该分片的持续时间（秒）
+            const duration = audioBuffer.duration;
+
+            // 调度播放时间
+            // 如果 nextStartTime 比当前时间早，说明是首包，或者播放已经赶上了。此时立即播放并对齐 currentTime。
+            const currentTime = this.audioCtx.currentTime;
+            let playTime = Math.max(this.nextStartTime, currentTime);
+
+            // 如果是首包，加一小段 buffer 延迟（50ms）防止初次卡顿
+            if (this.nextStartTime === 0) {
+                playTime += 0.05;
+            }
+
+            source.start(playTime);
+
+            // 记录下一段的预定开始时间（实现无缝衔接的关键！）
+            this.nextStartTime = playTime + duration;
+
+            // 状态管理：播放中
+            if (this.data.status !== 'talking') {
+                this.setData({ status: 'talking' });
+            }
+
+        } catch (e) {
+            console.error("PCM 播放失败:", e);
+        }
+    },
+
+    /**
      * 页面卸载时执行
-     * 清理WebSocket连接
+     * 清理WebSocket连接和音频播放
      */
     onUnload() {
+        console.log("📤 页面卸载,清理资源...");
+
+        // 关闭ASR WebSocket
         if (this.socket) {
             this.socket.close();
+            this.socket = null;
         }
+
+        // 关闭对话WebSocket
         if (this.chatSocket) {
             this.chatSocket.close();
+            this.chatSocket = null;
         }
+
+        // 停止WebAudio播放
+        if (this.audioCtx) {
+            try {
+                this.audioCtx.suspend();
+                this.audioCtx.close();
+                console.log("🔇 WebAudio已停止");
+            } catch (e) {
+                console.warn("WebAudio停止失败:", e);
+            }
+        }
+
+        // 停止录音
+        if (this.recorderManager && this.data.status === 'recording') {
+            try {
+                this.recorderManager.stop();
+                console.log("🎤 录音已停止");
+            } catch (e) {
+                console.warn("录音停止失败:", e);
+            }
+        }
+
+        // 清除定时器
+        if (this.data.timer) {
+            clearInterval(this.data.timer);
+        }
+
+        // 清除超时定时器
+        if (this.thinkingTimeout) {
+            clearTimeout(this.thinkingTimeout);
+        }
+
+        console.log("✅ 资源清理完成");
     },
 
     // ========================================================================
@@ -152,7 +324,8 @@ Page({
      */
     connectASRWebSocket() {
         // 后端ASR WebSocket地址（局域网IP，真机测试用）
-        const wsUrl = 'ws://192.168.3.73:8000/ws/asr';
+        const baseUrl = getApp().globalData.baseUrl.replace('http://', '');
+        const wsUrl = `ws://${baseUrl}/ws/asr`;
 
         console.log("正在连接ASR WebSocket:", wsUrl);
 
@@ -224,7 +397,12 @@ Page({
                     const confirmedText = this.utterances.filter(u => u).join('');
                     const tempText = Object.values(this.tempUtterances).join('');
                     const displayText = confirmedText + tempText;
-                    this.setData({ userInput: displayText });
+
+                    // 每次都更新,使用固定大数值滚动到底部
+                    this.setData({
+                        userInput: displayText,
+                        userScrollTop: 999999
+                    });
                 }
             } catch (e) {
                 console.error("ASR解析错误:", e);
@@ -310,7 +488,17 @@ Page({
             this.setData({ userInput: finalText });
             console.log("📝 最终识别文本:", finalText.slice(0, 50));
 
-            // 延迟发送（确保UI更新完成）
+            // 检查是否被取消
+            if (this.isRecordingCancelled) {
+                console.log("❌ 录音已取消,不上传语音");
+                this.isRecordingCancelled = false;  // 重置标志位
+                return;
+            }
+
+            // 保存录音文件路径待上传
+            this.pendingVoicePath = tempFilePath;
+
+            // 延迟发送（确保 UI 更新完成）
             setTimeout(() => {
                 this.handleSend();
             }, 500);
@@ -375,14 +563,35 @@ Page({
      * 停止录音但不发送内容，清空已识别的文字。
      */
     handleCancelRecording() {
+        console.log("🚫 用户取消录音");
+
+        // 设置取消标志位
+        this.isRecordingCancelled = true;
+
+        // 停止录音
         this.recorderManager.stop();
+
+        // 清除计时器
         clearInterval(this.data.timer);
+
+        // 关闭 ASR WebSocket
+        if (this.socket) {
+            this.socket.close({ code: 1000, reason: '用户取消' });
+            this.socket = null;
+            this.setData({ socketOpen: false });
+        }
+
+        // 重置状态
         this.setData({
             status: 'idle',
             userInput: '',
-            recordingTime: '60'
+            recordingTime: '00:59'
         });
-        console.log("录音已取消");
+
+        // 清空 ASR 数据
+        this.utterances = [];
+        this.tempUtterances = {};
+        this.indexOffset = 0;
     },
 
     /**
@@ -431,23 +640,73 @@ Page({
      * 4. 开始录音
      */
     startRecordingLogic() {
-        // 重置ASR追踪状态
+        console.log("开始录音逻辑...");
+
+        // 先停止可能正在进行的录音
+        try {
+            this.recorderManager.stop();
+            console.log("🛑 停止之前的录音");
+        } catch (e) {
+            // 如果没有录音在进行,会报错,忽略即可
+        }
+
+        // 清除计时器
+        if (this.data.timer) {
+            clearInterval(this.data.timer);
+            this.setData({ timer: null });
+        }
+
+        // 如果 TTS 正在播放，停止播放
+        if (this.chatSocket) {
+            console.log("🛑 TTS 播放中，关闭对话 WebSocket");
+            this.chatSocket.close();
+            this.chatSocket = null;
+        }
+
+        // 停止 WebAudio 播放并清空队列
+        if (this.audioCtx) {
+            try {
+                // 暂停并关闭音频上下文,停止所有已调度的音频
+                this.audioCtx.suspend();
+                this.audioCtx.close();
+                console.log("🛑 停止 WebAudio 播放");
+
+                // 重新创建音频上下文
+                this.audioCtx = wx.createWebAudioContext();
+                this.gainNode = this.audioCtx.createGain();
+                this.gainNode.connect(this.audioCtx.destination);
+                this.gainNode.gain.value = 1.0;
+            } catch (e) {
+                console.warn("WebAudio 停止失败:", e);
+            }
+            this.nextStartTime = 0;  // 重置播放时间
+        }
+
+        // 清空文本队列，防止后续显示
+        if (this.textQueue) {
+            this.textQueue = [];
+            this.displayedText = '';
+            console.log("🗑️ 清空文本队列");
+        }
+
+        // 重置 ASR 追踪状态
         this.utterances = [];
         this.tempUtterances = {};
         this.indexOffset = 0;
 
-        // 连接ASR WebSocket
-        console.log("🔌 为新录音连接ASR...");
+        // 连接 ASR WebSocket
         this.connectASRWebSocket();
 
-        // 等待连接建立后开始录音
+        // 延迟启动录音，确保 WebSocket 已连接
         setTimeout(() => {
             if (this.data.socketOpen) {
                 this.startRecording();
             } else {
-                console.error("❌ ASR连接失败");
-                wx.showToast({ title: '连接失败，请重试', icon: 'none' });
-                this.setData({ status: 'idle' });
+                console.error("WebSocket 未连接，无法开始录音");
+                wx.showToast({
+                    title: '连接失败，请重试',
+                    icon: 'none'
+                });
             }
         }, 800);
     },
@@ -524,7 +783,8 @@ Page({
         }
 
         console.log("发送消息:", textToSend);
-        this.setData({ status: 'thinking' });
+        // 注释掉状态切换，避免打断用户可能正在进行的下一轮录音
+        // this.setData({ status: 'thinking' });
 
         // 连接对话WebSocket
         this.connectToChatSocket(textToSend);
@@ -561,17 +821,46 @@ Page({
 
         const assistantMsgIndex = newMsgList.length - 1;
 
-        // 关闭已有的对话连接
+        // 关闭已有的对话连接 (v3.4.4: 增加安全性检查)
         if (this.chatSocket) {
-            console.log('关闭已有的对话连接');
-            this.chatSocket.close();
+            try {
+                // 只有在非关闭状态下才尝试调用 close
+                this.chatSocket.close({
+                    success: () => console.log('✅ 旧对话连接已关闭'),
+                    fail: (err) => console.log('⚠️ 旧对话连接关闭跳过 (可能已失效):', err.errMsg)
+                });
+            } catch (e) {
+                console.error('❌ 关闭 Socket 异常:', e);
+            }
+            this.chatSocket = null; // 显式置空
         }
 
         // 创建对话WebSocket连接
         this.chatSocket = wx.connectSocket({
-            url: 'ws://192.168.3.73:8000/ws/chat',
+            url: getApp().globalData.baseUrl.replace('http://', 'ws://') + '/ws/interview',
             success: () => console.log('对话WebSocket连接中...')
         });
+
+        // 设置超时保护 (30秒)
+        this.thinkingTimeout = setTimeout(() => {
+            if (this.data.status === 'thinking') {
+                console.error('❌ 思考超时,自动恢复');
+                this.setData({
+                    status: 'idle',
+                    aiMessage: '抱歉,我遇到了一些问题,请重试。'
+                });
+                if (this.chatSocket) {
+                    this.chatSocket.close();
+                    this.chatSocket = null;
+                }
+            }
+        }, 30000);
+
+        // ==================== 重置 WebAudio 状态 ====================
+        if (this.audioCtx) {
+            this.audioCtx.resume();
+            this.nextStartTime = 0; // 重置调度时间
+        }
 
         // ==================== 音频播放队列 ====================
         this.audioQueue = [];      // 待播放的音频文件路径队列
@@ -602,7 +891,6 @@ Page({
                 this.setData({
                     [key]: this.displayedText,
                     aiMessage: this.displayedText,
-                    status: 'idle',
                     scrollTop: Date.now()
                 });
             }
@@ -614,8 +902,20 @@ Page({
         // 连接成功后发送消息
         this.chatSocket.onOpen(() => {
             console.log('对话WebSocket已连接');
+
+            // 获取全局 userId
+            const app = getApp();
+            const userId = app.globalData.userId || '2b8f1b66-b54a-4e4c-ac28-4bac4a05b8d2';  // 测试用户UUID
+
+            console.log('发送消息（v3.3格式），userId:', userId, 'text:', fullTextPrompt);
+
+            // 发送消息（v3.3格式）
             this.chatSocket.send({
-                data: JSON.stringify({ messages: history })
+                data: JSON.stringify({
+                    user_id: userId,
+                    text: fullTextPrompt,
+                    has_voice: this.pendingVoicePath ? true : false
+                })
             });
         });
 
@@ -623,56 +923,57 @@ Page({
         this.chatSocket.onMessage((res) => {
             try {
                 const data = JSON.parse(res.data);
+                const app = getApp();
+                const userId = app.globalData.userId || '2b8f1b66-b54a-4e4c-ac28-4bac4a05b8d2';
 
+                // ----- 处理 session_id -----
+                if (data.type === 'session_id') {
+                    console.log("📍 收到 session_id:", data.session_id);
+                    app.globalData.sessionId = data.session_id;
+                }
+                // ----- 处理 user_text_id -----
+                else if (data.type === 'user_text_id') {
+                    console.log("📍 收到 user_text_id:", data.text_id);
+                    this.setData({ currentTextId: data.text_id });
+
+                    // 收到 text_id 后上传挂起的语音文件
+                    if (that.pendingVoicePath) {
+                        that.uploadVoice(that.pendingVoicePath, userId, app.globalData.sessionId, data.text_id);
+                    }
+                }
+                // ----- 处理 response_id -----
+                else if (data.type === 'response_id') {
+                    console.log("📍 收到 response_id:", data.response_id);
+                }
                 // ----- 处理文本流 -----
-                if (data.type === 'text') {
+                else if (data.type === 'text') {
                     console.log("📝 收到文本:", data.content);
 
-                    // 累积文本
                     if (accumulatedText === "") {
-                        accumulatedText = data.content;
-                    } else {
-                        accumulatedText += data.content;
+                        this.setData({ status: 'thinking' });
                     }
 
-                    // 将chunk加入显示队列
+                    accumulatedText += data.content;
                     this.textQueue.push(data.content);
 
-                    // 如果当前没有在显示，启动显示
                     if (!this.isDisplaying) {
                         displayNextChunk();
                     }
                 }
-                // ----- 处理音频数据 -----
+                // ----- 处理音频数据 (PCM 模式 v3.4) -----
                 else if (data.type === 'audio') {
-                    console.log("📦 收到音频, 长度:", data.data.length);
-
-                    // 将Base64转换为ArrayBuffer
-                    const arrayBuffer = wx.base64ToArrayBuffer(data.data);
-
-                    // 写入临时文件
-                    const fs = wx.getFileSystemManager();
-                    const tempFilePath = `${wx.env.USER_DATA_PATH}/audio_${Date.now()}_${this.data.audioCounter}.mp3`;
-                    this.setData({ audioCounter: this.data.audioCounter + 1 });
-
-                    fs.writeFile({
-                        filePath: tempFilePath,
-                        data: arrayBuffer,
-                        encoding: 'binary',
-                        success: () => {
-                            console.log("✅ 音频文件已写入");
-                            this.audioQueue.push(tempFilePath);
-                            this.playNextAudio();
-                        },
-                        fail: (err) => {
-                            console.error("❌ 音频文件写入失败:", err);
-                        }
-                    });
+                    // console.log("📦 收到 PCM 音频分片");
+                    this.playPCMChunk(data.data);
                 }
                 // ----- 处理完成信号 -----
                 else if (data.type === 'text_finish') {
                     console.log("✅ 文本流结束");
-                    // 音频会继续从队列中播放
+                    this.setData({ status: 'idle' });
+                    // 清除超时定时器
+                    if (this.thinkingTimeout) {
+                        clearTimeout(this.thinkingTimeout);
+                        this.thinkingTimeout = null;
+                    }
                 }
                 // ----- 处理错误 -----
                 else if (data.type === 'error') {
@@ -687,6 +988,25 @@ Page({
         // 连接关闭回调
         this.chatSocket.onClose(() => {
             console.log("对话WebSocket已关闭");
+            // 清除超时定时器
+            if (this.thinkingTimeout) {
+                clearTimeout(this.thinkingTimeout);
+                this.thinkingTimeout = null;
+            }
+        });
+
+        // 连接错误回调
+        this.chatSocket.onError((err) => {
+            console.error("❌ 对话WebSocket错误:", err);
+            this.setData({
+                status: 'idle',
+                aiMessage: '连接失败,请检查网络后重试。'
+            });
+            // 清除超时定时器
+            if (this.thinkingTimeout) {
+                clearTimeout(this.thinkingTimeout);
+                this.thinkingTimeout = null;
+            }
         });
     },
 
@@ -701,6 +1021,12 @@ Page({
      * 采用串行播放策略，确保音频按顺序播放。
      */
     playNextAudio() {
+        // 安全检查：确保队列已初始化
+        if (!this.audioQueue) {
+            console.warn('⚠️ audioQueue 未初始化');
+            return;
+        }
+
         // 如果正在播放，等待当前音频结束
         if (this.isPlaying) {
             return;
@@ -723,6 +1049,51 @@ Page({
         console.log("▶️ 播放音频, 队列剩余:", this.audioQueue.length);
 
         this.player.src = audioSrc;
-        this.player.play();
+
+        // 防御：如果在 play 之前 player 被销毁或未就绪，try-catch
+        try {
+            if (!this.player) {
+                this.initAudioPlayer();
+                this.player.src = audioSrc;
+            }
+            this.player.play();
+        } catch (e) {
+            console.error("❌ 调用 player.play() 失败:", e);
+            this.initAudioPlayer();
+            this.isPlaying = false;
+            this.playNextAudio();
+        }
+    },
+
+    /**
+     * 上传语音文件
+     */
+    uploadVoice(filePath, userId, sessionId, textId) {
+        if (!filePath || !userId || !sessionId) {
+            console.warn("❌ 上传语音参数缺失", { filePath, userId, sessionId });
+            return;
+        }
+
+        console.log("📤 开始上传语音文件, textId:", textId);
+
+        // 清空挂起路径，避免重复上传
+        this.pendingVoicePath = null;
+
+        wx.uploadFile({
+            url: getApp().globalData.baseUrl + '/api/upload_voice',
+            filePath: filePath,
+            name: 'file',
+            formData: {
+                user_id: userId,
+                session_id: sessionId,
+                text_id: textId || ''
+            },
+            success: (res) => {
+                console.log("✅ 语音上传结果:", res.data);
+            },
+            fail: (err) => {
+                console.error("❌ 语音上传失败:", err);
+            }
+        });
     }
 })

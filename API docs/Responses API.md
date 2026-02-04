@@ -1,6 +1,6 @@
 Responses API  
   
-一、创建相应模型  
+一、创建模型响应  
  POST https://ark.cn-beijing.volces.com/api/v3/responses   
 本文介绍 Responses API 创建模型请求时的输入输出参数，供您使用接口时查阅字段含义。  
 *Tips：一键展开折叠，快速检索内容  
