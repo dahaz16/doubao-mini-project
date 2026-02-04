@@ -25,10 +25,11 @@
 # ============================================================================
 # 导入模块
 # ============================================================================
-from fastapi import FastAPI, HTTPException, WebSocket, Request
+from typing import List, Dict, Optional, Any
+from fastapi import FastAPI, HTTPException, WebSocket, Request, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -37,13 +38,27 @@ import logging
 import asyncio
 import re
 import urllib.parse
+import base64
 import uuid
 
 # 内部模块导入
 from .database import init_db, insert_record, get_records  # 数据库操作
-from .ai_service import get_doubao_summary, get_doubao_chat_reply, get_doubao_chat_reply_stream  # AI服务
+from .ai_service import get_doubao_summary, get_doubao_chat_reply, get_doubao_chat_reply_stream, get_doubao_response_stream  # AI服务
 from .volc_service import synthesize_speech, asr_stream  # 火山引擎服务
 from .volc_tts_client import VolcTTSClient  # TTS客户端
+from .wechat_service import code2session, validate_wechat_config  # 微信服务
+from .user_service import get_user_by_openid, create_user, update_user_info  # 用户服务
+from .session_service import create_session, validate_session, get_session_response_id, update_session_response_id, extend_session  # Session管理
+from .interview_service import save_original_text, save_original_voice  # 访谈记录服务
+from .cos_service import upload_audio_to_cos  # COS服务
+from .audio_service import convert_pcm_to_mp3  # 音频处理服务
+from .cachepool_service import add_to_cachepool  # 缓存池服务
+from .stn_database import get_latest_hint, get_previous_dialogues # 故事板支持 (v3.2)
+from .stn_service import run_stn_agent_async  # Stn Agent 触发函数 (v3.2)
+# v3.3 服务导入
+from .intv_service import process_user_input  # 访谈员 Agent v3.3
+# 管理后台服务导入
+from .admin_service import router as admin_router
 
 # ============================================================================
 # 日志配置
@@ -139,7 +154,33 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # 静态文件服务（用于存放音频等资源）
-app.mount("/static", StaticFiles(directory="backend/static"), name="static")
+# 使用绝对路径,确保在 Docker 容器中正常工作
+static_path = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+# 管理后台 API 路由
+app.include_router(admin_router, prefix="/admin/api", tags=["Admin"])
+
+# 管理后台静态文件托管（需要在前端构建完成后才生效）
+import os
+admin_static_path = os.path.join(os.path.dirname(__file__), "static", "admin")
+if os.path.exists(admin_static_path):
+    # 挂载静态文件（必须放在 API 路由后面，否则会拦截 API）
+    # 注意：StaticFiles 无法处理前端路由回退，我们需要手动处理
+    @app.get("/admin/{path:path}")
+    async def admin_spa_fallback(path: str):
+        # 如果是静态资源（assets 等），返回静态文件
+        full_path = os.path.join(admin_static_path, path)
+        if os.path.isfile(full_path):
+            return FileResponse(full_path)
+        # 否则返回 index.html 让前端路由接管
+        return FileResponse(os.path.join(admin_static_path, "index.html"))
+
+    # 同时也保留挂载，以便于处理根路径和其他静态资源
+    app.mount("/admin", StaticFiles(directory=admin_static_path, html=True), name="admin_dashboard")
+    logging.info(f"✅ 管理后台已启用: http://0.0.0.0:8000/admin")
+else:
+    logging.warning("⚠️  管理后台前端未构建，请先运行构建脚本")
 
 
 # ============================================================================
@@ -161,6 +202,23 @@ class SummaryResponse(BaseModel):
 class ChatRequest(BaseModel):
     """对话请求模型"""
     messages: list  # 消息列表，格式: [{"role": "user/assistant", "content": "..."}]
+
+
+class WeChatLoginRequest(BaseModel):
+    """微信登录请求模型"""
+    code: str  # 微信登录凭证
+
+
+class UserInfoUpdateRequest(BaseModel):
+    """用户信息更新请求模型"""
+    user_id: str
+    nickname: str = None
+    avatar_url: str = None
+    gender: int = None
+    phone_number: str = None
+    profile: str = None
+    birth_year: int = None
+    birth_month: int = None
 
 
 # ============================================================================
@@ -217,6 +275,184 @@ def list_records():
     return get_records()
 
 
+@app.post("/api/wechat/login")
+async def wechat_login(request: WeChatLoginRequest):
+    """
+    微信登录接口
+    
+    接收微信登录凭证 code，调用微信 API 获取 openid，
+    查询或创建用户，返回用户信息。
+    
+    参数:
+        request: 包含微信登录凭证的请求体
+    
+    返回:
+        用户信息和登录状态
+    """
+    try:
+        # 1. 验证微信配置
+        if not validate_wechat_config():
+            raise HTTPException(status_code=500, detail="微信配置不完整")
+        
+        # 2. 调用微信 API
+        wechat_result = code2session(request.code)
+        
+        # 3. 检查微信 API 调用结果
+        if 'errcode' in wechat_result and wechat_result['errcode'] != 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"微信登录失败: {wechat_result.get('errmsg')}"
+            )
+        
+        openid = wechat_result.get('openid')
+        unionid = wechat_result.get('unionid')
+        
+        if not openid:
+            raise HTTPException(status_code=400, detail="未获取到 OpenID")
+        
+        # 4. 查询用户是否存在
+        user = get_user_by_openid(openid)
+        
+        is_new_user = False
+        if not user:
+            # 5. 创建新用户
+            user_id = create_user(openid, unionid)
+            user = get_user_by_openid(openid)
+            is_new_user = True
+            logging.info(f"新用户注册: {user_id}")
+        else:
+            logging.info(f"用户登录: {user['user_id']}")
+        
+        # 6. 返回用户信息
+        return {
+            "code": 0,
+            "message": "登录成功",
+            "data": {
+                "user_id": user['user_id'],
+                "openid": user['wechat_openid'],
+                "is_new_user": is_new_user,
+                "user_info": user
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"微信登录异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/wechat/update_userinfo")
+async def update_userinfo(request: UserInfoUpdateRequest):
+    """
+    更新用户信息接口
+    
+    更新用户的昵称、头像、性别等信息。
+    
+    参数:
+        request: 包含用户信息的请求体
+    
+    返回:
+        更新结果
+    """
+    try:
+        success = update_user_info(
+            user_id=request.user_id,
+            nickname=request.nickname,
+            avatar_url=request.avatar_url,
+            gender=request.gender,
+            phone_number=request.phone_number,
+            profile=request.profile,
+            birth_year=request.birth_year,
+            birth_month=request.birth_month
+        )
+        
+        if success:
+            return {
+                "code": 0,
+                "message": "更新成功"
+            }
+        else:
+            raise HTTPException(status_code=400, detail="更新失败")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"更新用户信息异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/upload_avatar")
+async def upload_avatar(file: UploadFile = File(...), user_id: str = Form(...)):
+    """
+    上传用户头像
+    """
+    try:
+        # 读取文件内容
+        file_content = await file.read()
+        
+        # 生成文件名
+        ext = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+        filename = f"avatar_{user_id}_{int(time.time())}.{ext}"
+        
+        # 上传到 COS
+        avatar_url = upload_file_to_cos(file_content, filename)
+        
+        if not avatar_url:
+            raise HTTPException(status_code=500, detail="头像上传失败")
+            
+        return {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "avatar_url": avatar_url
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"头像上传异常: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/get_latest_ai_message")
+async def get_latest_ai_message_endpoint(user_id: str):
+    """
+    获取用户最新的 AI 回复内容
+    
+    用于小程序采访页初始化时展示最新 AI 消息。
+    
+    参数:
+        user_id: 用户 ID (query parameter)
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "ai_message": "最新AI回复内容" 或 null
+            }
+        }
+    """
+    try:
+        from .interview_service import get_latest_ai_message
+        
+        ai_message = get_latest_ai_message(user_id)
+        
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "ai_message": ai_message
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"获取最新 AI 消息异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 @app.post("/chat")
 def chat_with_doubao(request: ChatRequest):
     """
@@ -229,7 +465,7 @@ def chat_with_doubao(request: ChatRequest):
         raise HTTPException(status_code=400, detail="消息列表不能为空")
     
     # 系统提示词 - 定义AI的角色
-    system_prompt = "你是一名专业的回忆录采访者，请采访用户的回忆，输出的问题在60字左右。"
+    system_prompt = '你是一名邻居小妹，在和用户进行碰面闲聊。每句话开头必须加"哥哥"。输出的内容在15字左右。'
     messages = [{"role": "system", "content": system_prompt}] + request.messages
     
     # 获取AI回复
@@ -256,19 +492,27 @@ def chat_with_doubao(request: ChatRequest):
 @app.websocket("/ws/chat")
 async def chat_websocket_endpoint(websocket: WebSocket):
     """
-    流式聊天WebSocket端点
+    流式聊天WebSocket端点（使用 Response API）
     
     这是回忆录采访的核心端点，实现了：
-    1. 接收用户消息（包含对话历史）
-    2. 流式调用大模型生成回复
-    3. 按句子切分，逐句合成语音并发送
+    1. Session 管理（创建/验证会话）
+    2. 使用 Response API 进行多轮对话
+    3. 流式调用大模型生成回复
+    4. 按句子切分，逐句合成语音并发送
+    5. 保存对话记录到数据库
     
     消息格式:
     
     接收（客户端→服务器）:
-        {"messages": [{"role": "user", "content": "..."}]}
+        {
+            "user_id": "用户ID",
+            "session_id": "会话ID（可选）",
+            "messages": [{"role": "user", "content": "..."}]
+        }
     
     发送（服务器→客户端）:
+        - 会话ID: {"type": "session_id", "session_id": "..."}
+        - 响应ID: {"type": "response_id", "response_id": "..."}
         - 文字: {"type": "text", "content": "..."}
         - 音频: {"type": "audio", "data": "<base64编码的音频>"}
         - 完成: {"type": "text_finish"}
@@ -279,80 +523,192 @@ async def chat_websocket_endpoint(websocket: WebSocket):
     logging.info("[对话] WebSocket连接已接受")
     
     try:
-        # 第一步：等待并接收客户端发送的消息
+        # 第一步：接收客户端消息
         logging.info("[对话] 等待客户端消息...")
         data = await websocket.receive_json()
         logging.info(f"[对话] 收到数据: {data}")
+        
+        user_id = data.get("user_id")
+        session_id = data.get("session_id")
         messages = data.get("messages", [])
         
-        # 第二步：添加系统提示词（如果没有）
-        # 系统提示词定义了AI的角色和行为
-        system_prompt = "你是一名专业的回忆录采访者，请采访用户的回忆，输出的问题在60字左右。"
-        if not messages or messages[0].get("role") != "system":
-            messages = [{"role": "system", "content": system_prompt}] + messages
+        # 验证必需参数
+        if not user_id:
+            await websocket.send_json({"type": "error", "message": "缺少 user_id 参数"})
+            return
         
-        # 第三步：开始流式调用大模型
-        logging.info(f"[对话] 开始调用大模型，消息数: {len(messages)}")
-        stream_iterator = get_doubao_chat_reply_stream(messages)
+        if not messages:
+            await websocket.send_json({"type": "error", "message": "缺少 messages 参数"})
+            return
         
-        # 第四步：句子缓冲 - 用于积累文字直到遇到句子结束符
-        # 目的：将完整句子发送给TTS，而不是每个字符
-        sentence_buffer = ""
-        sentence_endings = ["。", "!", "?", "！", "？", "\n"]  # 中英文句子结束符
-        
-        # 第五步：流式处理大模型输出
-        for chunk in stream_iterator:
-            # 5.1 立即发送文字给前端（实时显示）
+        # 第二步：Session 管理
+        if not session_id:
+            # 创建新会话
+            session_id = create_session(user_id)
+            logging.info(f"[对话] 创建新会话: {session_id}")
             await websocket.send_json({
-                "type": "text",
-                "content": chunk,
+                "type": "session_id",
+                "session_id": session_id
             })
-            logging.info(f"[对话] ===== 发送文字到前端: {chunk[:30]} =====")
-            
-            # 5.2 将文字添加到缓冲区
-            sentence_buffer += chunk
-            
-            # 5.3 检测并处理完整句子
-            # 使用 while 循环处理缓冲区中可能存在的多个完整句子
-            while True:
-                # 找到最早出现的句子结束符
-                earliest_idx = -1
-                earliest_ending = None
-                
-                for ending in sentence_endings:
-                    idx = sentence_buffer.find(ending)
-                    if idx != -1:
-                        if earliest_idx == -1 or idx < earliest_idx:
-                            earliest_idx = idx
-                            earliest_ending = ending
-                
-                # 如果没有找到句子结束符，退出循环
-                if earliest_idx == -1:
-                    break
-                
-                # 提取完整句子
-                sentence = sentence_buffer[:earliest_idx + 1].strip()
-                
-                # 处理句子：合成语音
-                if len(sentence) > 0:
-                    logging.info(f"[对话] 合成语音: {sentence[:30]}...")
-                    
-                    # 调用HTTP TTS服务
-                    audio_base64 = await global_tts_client.synthesize_http_v3(sentence)
-                    
-                    if audio_base64:
-                        # 发送音频给前端
-                        await websocket.send_json({
-                            "type": "audio",
-                            "data": audio_base64
-                        })
-                    else:
-                        logging.error(f"[对话] TTS合成失败: {sentence[:30]}")
-                
-                # 从缓冲区移除已处理的句子
-                sentence_buffer = sentence_buffer[earliest_idx + 1:]
+        else:
+            # 验证会话
+            if not validate_session(session_id):
+                # 会话无效，创建新会话
+                session_id = create_session(user_id)
+                logging.info(f"[对话] 会话已过期，创建新会话: {session_id}")
+                await websocket.send_json({
+                    "type": "session_id",
+                    "session_id": session_id
+                })
+            else:
+                # 延长会话过期时间
+                extend_session(session_id)
+                logging.info(f"[对话] 使用现有会话: {session_id}")
         
-        # 第六步：处理缓冲区中剩余的文字（最后可能没有句号的部分）
+        # 第三步：获取用户输入
+        user_input = messages[-1].get("content", "")
+        if not user_input:
+            await websocket.send_json({"type": "error", "message": "用户输入为空"})
+            return
+        
+        logging.info(f"[对话] 用户输入: {user_input[:50]}...")
+        
+        # 保存用户输入到数据库
+        save_original_text(session_id, user_id, user_input, speaker_type=0)
+        
+        # 添加到缓存池
+        cache_result = add_to_cachepool(session_id, user_id, 0, user_input)
+        logging.info(f"📝 缓存池字数: {cache_result['current_word_count']} 字")
+        
+        if cache_result['threshold_reached']:
+            logging.info(f"🔔 缓存池已满！内容:\n{cache_result['cache_content']}")
+            logging.info(f"📦 缓存池ID: {cache_result['cachepool_id']}")
+            # 触发 Stn Agent
+            await run_stn_agent_async(user_id, session_id, cache_result['cache_content'], cache_result['cachepool_id'])
+        
+        # 第四步：获取 previous_response_id
+        previous_response_id = get_session_response_id(session_id)
+        logging.info(f"[对话] previous_response_id: {previous_response_id[:50] if previous_response_id else 'None'}...")
+        
+        # 第五步：构建输入（严格遵循 PRD pc:; ot:; ht: 逻辑）
+        
+        # 5.1 处理 pc (前情提要)
+        # 判断是否为新建 Session (没有 previous_response_id)
+        pc_content = ""
+        if not previous_response_id:
+            pc_content = get_previous_dialogues(user_id, limit=5)
+            logging.info(f"[对话] 注入 pc (前情提要): {pc_content[:50]}...")
+        
+        # 5.2 处理 ht (导演提示)
+        ht_content = get_latest_hint(user_id)
+        if ht_content:
+            logging.info(f"[对话] 注入 ht (导演建议): {ht_content[:50]}...")
+
+        # 5.3 组装 intv_input
+        # 格式: pc: {previous_content}; ot: {user_original_text}; ht:{hint}
+        components = []
+        if pc_content:
+            components.append(f"pc: {pc_content}")
+        
+        # ot 始终存在
+        components.append(f"ot: {user_input}")
+        
+        if ht_content:
+            components.append(f"ht: {ht_content}")
+            
+        full_input = "; ".join(components)
+        logging.info(f"[对话] 最终组装的 intv_input: {full_input[:100]}...")
+        
+        # 第六步：调用 Response API
+        logging.info("[对话] 开始调用 Response API...")
+        stream = get_doubao_response_stream(
+            input_text=full_input,
+            previous_response_id=previous_response_id,
+            enable_caching=False  # 暂时关闭缓存
+        )
+        
+        # 第六步：处理流式响应
+        new_response_id = None
+        ai_reply = ""
+        sentence_buffer = ""
+        sentence_endings = ["。", "!", "?", "！", "？", "\n"]
+        
+        for event in stream:
+            event_type = event.get("type")
+            
+            # 6.1 获取 response_id
+            if event_type == "response_id":
+                new_response_id = event["response_id"]
+                logging.info(f"[对话] 获取 response_id: {new_response_id[:50]}...")
+                await websocket.send_json({
+                    "type": "response_id",
+                    "response_id": new_response_id
+                })
+            
+            # 6.2 处理文本内容
+            elif event_type == "text":
+                chunk = event["content"]
+                ai_reply += chunk
+                
+                # 立即发送文字给前端
+                await websocket.send_json({
+                    "type": "text",
+                    "content": chunk
+                })
+                logging.info(f"[对话] 发送文字: {chunk[:30]}...")
+                
+                # 添加到句子缓冲区
+                sentence_buffer += chunk
+                
+                # 检测并处理完整句子
+                while True:
+                    earliest_idx = -1
+                    earliest_ending = None
+                    
+                    for ending in sentence_endings:
+                        idx = sentence_buffer.find(ending)
+                        if idx != -1:
+                            if earliest_idx == -1 or idx < earliest_idx:
+                                earliest_idx = idx
+                                earliest_ending = ending
+                    
+                    if earliest_idx == -1:
+                        break
+                    
+                    # 提取完整句子
+                    sentence = sentence_buffer[:earliest_idx + 1].strip()
+                    
+                    # 合成语音
+                    if len(sentence) > 0:
+                        logging.info(f"[对话] 合成语音: {sentence[:30]}...")
+                        audio_base64 = await global_tts_client.synthesize_http_v3(sentence)
+                        
+                        if audio_base64:
+                            await websocket.send_json({
+                                "type": "audio",
+                                "data": audio_base64
+                            })
+                        else:
+                            logging.error(f"[对话] TTS合成失败: {sentence[:30]}")
+                    
+                    # 移除已处理的句子
+                    sentence_buffer = sentence_buffer[earliest_idx + 1:]
+            
+            # 6.3 处理错误
+            elif event_type == "error":
+                error_msg = event["message"]
+                logging.error(f"[对话] Response API 错误: {error_msg}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": error_msg
+                })
+                return
+            
+            # 6.4 完成
+            elif event_type == "done":
+                logging.info("[对话] Response API 完成")
+        
+        # 第七步：处理剩余文字
         if sentence_buffer.strip():
             logging.info(f"[对话] 合成剩余文字: {sentence_buffer[:30]}...")
             audio_base64 = await global_tts_client.synthesize_http_v3(sentence_buffer.strip())
@@ -362,18 +718,107 @@ async def chat_websocket_endpoint(websocket: WebSocket):
                     "data": audio_base64
                 })
         
-        # 第七步：发送完成信号
+        # 第八步：保存 AI 回复到数据库
+        if ai_reply:
+            save_original_text(session_id, user_id, ai_reply, speaker_type=1)
+            logging.info(f"[对话] 保存 AI 回复: {len(ai_reply)} 字")
+            
+            # 添加到缓存池
+            cache_result = add_to_cachepool(session_id, user_id, 1, ai_reply)
+            logging.info(f"📝 缓存池字数: {cache_result['current_word_count']} 字")
+            
+            if cache_result['threshold_reached']:
+                logging.info(f"🔔 缓存池已满!内容:\n{cache_result['cache_content']}")
+                logging.info(f"📦 缓存池ID: {cache_result['cachepool_id']}")
+                # 触发 Stn Agent (使用异步包装)
+                from .stn_service import run_stn_agent
+                asyncio.create_task(run_stn_agent(user_id))
+        
+        
+        # 第九步：更新 Session 的 response_id
+        if new_response_id:
+            update_session_response_id(session_id, new_response_id)
+            logging.info(f"[对话] 更新 session response_id")
+        
+        # 第十步：发送完成信号
         await websocket.send_json({"type": "text_finish"})
         logging.info("[对话] 对话完成")
         
     except Exception as e:
-        logging.error(f"WebSocket对话错误: {e}")
+        logging.error(f"WebSocket对话错误: {e}", exc_info=True)
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
         except:
             pass
     finally:
         logging.info("[对话] WebSocket连接关闭")
+
+
+@app.post("/api/upload_voice")
+async def upload_voice_endpoint(
+    file: UploadFile = File(...),
+    user_id: str = Form(...),
+    session_id: str = Form(...),
+    text_id: Optional[int] = Form(None)
+):
+    """
+    上传用户语音文件接口
+    """
+    try:
+        logging.info(f"🎤 [Upload] 收到请求: user_id={user_id}, session_id={session_id}, text_id={text_id}, filename={file.filename}")
+        
+        # 读取文件内容
+        pcm_data = await file.read()
+        logging.info(f"🎤 [Upload] PCM 数据大小: {len(pcm_data)} bytes")
+        
+        if len(pcm_data) == 0:
+            logging.error("❌ [Upload] 文件为空")
+            return JSONResponse(status_code=400, content={"code": 400, "message": "文件为空"})
+            
+        # 1. 转换格式 (PCM -> MP3)
+        try:
+            from .audio_service import convert_pcm_to_mp3
+            mp3_data = convert_pcm_to_mp3(pcm_data)
+            logging.info(f"🎤 [Upload] 转换成功, MP3 大小: {len(mp3_data)} bytes")
+        except Exception as e:
+            logging.error(f"❌ [Upload] PCM 转换失败: {e}")
+            return JSONResponse(status_code=500, content={"code": 500, "message": f"音频转换失败: {str(e)}"})
+        
+        # 2. 生成文件名
+        import time
+        import uuid
+        timestamp = int(time.time())
+        file_uuid = str(uuid.uuid4())[:8]
+        filename = f"voice_{user_id}_{timestamp}_{file_uuid}.mp3"
+        
+        # 3. 上传到 COS
+        from .cos_service import upload_audio_to_cos
+        voice_url = upload_audio_to_cos(mp3_data, filename)
+        
+        if not voice_url:
+            logging.error("❌ [Upload] COS 上传失败, check cos_service logs")
+            return JSONResponse(status_code=500, content={"code": 500, "message": "COS 上传失败"})
+            
+        # 4. 保存到数据库
+        try:
+            from .interview_service import save_original_voice
+            voice_id = save_original_voice(user_id, 0, voice_url, link_original_text_id=text_id)
+            logging.info(f"✅ [Upload] 记录已存入数据库, ID={voice_id}, text_id={text_id}, URL={voice_url}")
+        except Exception as e:
+            logging.error(f"❌ [Upload] 数据库保存失败: {e}")
+            return JSONResponse(status_code=500, content={"code": 500, "message": f"数据库保存失败: {str(e)}"})
+        
+        return {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "voice_url": voice_url,
+                "voice_id": voice_id
+            }
+        }
+    except Exception as e:
+        logging.error(f"💥 [Upload] 未捕获的错误: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"code": 500, "message": str(e)})
 
 
 @app.get("/tts/stream")
@@ -436,3 +881,184 @@ async def asr_websocket_endpoint(websocket: WebSocket):
         logging.error(f"ASR错误: {e}")
     finally:
         logging.info("WebSocket /ws/asr 连接关闭")
+
+
+# ============================================================================
+# v3.3 WebSocket 端点
+# ============================================================================
+
+@app.websocket("/ws/interview")
+async def chat_websocket_v33_endpoint(websocket: WebSocket):
+    """
+    v3.3 流式聊天 WebSocket 端点
+    
+    使用新的 Intv Agent 服务，基于 narration_status 表进行 Session 管理。
+    
+    消息格式:
+    
+    接收（客户端→服务器）:
+        {
+            "user_id": "用户ID",
+            "text": "用户输入文本",
+            "has_voice": false
+        }
+    
+    发送（服务器→客户端）:
+        - 开始: {"type": "start"}
+        - 文字: {"type": "text", "content": "..."}
+        - 音频: {"type": "audio", "data": "<base64>"}
+        - 完成: {"type": "done", "full_text": "..."}
+        - 错误: {"type": "error", "message": "..."}
+    """
+    logging.info("[v3.3] ===== 新的 WebSocket 连接请求 =====")
+    await websocket.accept()
+    logging.info("[v3.3] WebSocket 连接已接受")
+    
+    try:
+        # 接收客户端消息
+        data = await websocket.receive_json()
+        logging.info(f"[v3.3] 收到数据: {data}")
+        
+        user_id = data.get("user_id")
+        user_text = data.get("text", "")
+        has_voice = data.get("has_voice", False)
+        
+        if not user_id:
+            await websocket.send_json({"type": "error", "message": "缺少 user_id 参数"})
+            return
+        
+        if not user_text.strip():
+            await websocket.send_json({"type": "error", "message": "输入文本为空"})
+            return
+        
+        logging.info(f"[v3.3] 用户输入: {user_text[:50]}...")
+        
+        # --- TTS Streaming Setup ---
+        text_queue = asyncio.Queue()
+        
+        async def text_iterator():
+            while True:
+                chunk = await text_queue.get()
+                if chunk is None:
+                    break
+                yield chunk
+
+        # Start TTS Task
+        tts_generator = global_tts_client.synthesize_stream_v3(text_iterator())
+        
+        # Audio Receiver Task: Sends audio to Frontend & Accumulates for Saving
+        full_audio_buffer = bytearray()
+        
+        async def tts_receiver_task():
+            nonlocal full_audio_buffer
+            try:
+                # We need to send "start" signal for audio? No, frontend handles it.
+                async for audio_chunk in tts_generator:
+                    if audio_chunk:
+                         full_audio_buffer.extend(audio_chunk)
+                         # Convert to base64 for websocket
+                         b64_data = base64.b64encode(audio_chunk).decode('utf-8')
+                         logging.info(f"[v3.3 DEBUG] Sending audio chunk to FE: {len(audio_chunk)} bytes (b64 len: {len(b64_data)})")
+                         await websocket.send_json({"type": "audio", "data": b64_data})
+            except Exception as e:
+                logging.error(f"[v3.3] TTS Receiver Error: {e}")
+
+        tts_task = asyncio.create_task(tts_receiver_task())
+        
+        # --- Main LLM Loop ---
+        ai_text_id = None
+        full_ai_response = ""
+        sentence_buffer = ""
+        
+        async for event in process_user_input(user_id, user_text, has_voice):
+            event_type = event.get("type")
+            
+            if event_type == "start":
+                await websocket.send_json({"type": "start"})
+
+            elif event_type == "session_id":
+                await websocket.send_json({"type": "session_id", "session_id": event.get("session_id")})
+            
+            elif event_type == "user_text_id":
+                await websocket.send_json({"type": "user_text_id", "text_id": event.get("text_id")})
+            
+            elif event_type == "text":
+                chunk = event.get("content", "")
+                full_ai_response += chunk
+                
+                # Send text to frontend
+                await websocket.send_json({"type": "text", "content": chunk})
+                
+                # Buffer sentences to avoid TTS stuttering
+                if chunk:
+                    sentence_buffer += chunk
+                    if any(p in sentence_buffer for p in "。！？；\n") or len(sentence_buffer) >= 60:
+                        await text_queue.put(sentence_buffer)
+                        sentence_buffer = ""
+            
+            elif event_type == "done":
+                ai_text_id = event.get("ai_text_id")
+                # Flush remaining buffer
+                if sentence_buffer:
+                    await text_queue.put(sentence_buffer)
+                # Signal TTS to finish
+                await text_queue.put(None) 
+                
+            elif event_type == "error":
+                await websocket.send_json({"type": "error", "message": event.get("message")})
+                await text_queue.put(None) # Ensure TTS stops
+                return
+        
+        # Wait for TTS to finish
+        await tts_task
+        
+        # --- Post-process: Save Audio to COS & DB ---
+        if full_audio_buffer and ai_text_id:
+            try:
+                from datetime import datetime
+                from io import BytesIO
+                from pydub import AudioSegment
+                from .cos_service import upload_audio_to_cos
+                from .interview_service import save_original_voice
+                
+                logging.info(f"[v3.4] PCM 转换 MP3 中... 大小: {len(full_audio_buffer)} bytes")
+                
+                # 1. 将 raw PCM 转为 AudioSegment
+                # 采样率需与 TTS 配置一致 (24000), 16bit(sample_width=2), 单声道
+                audio_segment = AudioSegment(
+                    data=bytes(full_audio_buffer),
+                    sample_width=2,
+                    frame_rate=24000,
+                    channels=1
+                )
+                
+                # 2. 导出为 MP3
+                mp3_fp = BytesIO()
+                audio_segment.export(mp3_fp, format="mp3", bitrate="128k")
+                mp3_data = mp3_fp.getvalue()
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                filename = f"tts/{user_id}/{timestamp}.mp3"
+                
+                # 3. 上传 MP3 到 COS
+                audio_url = upload_audio_to_cos(mp3_data, filename)
+                
+                if audio_url:
+                    save_original_voice(user_id, speaker_type=1, audio_url=audio_url, link_original_text_id=ai_text_id)
+                    logging.info(f"[v3.4] PCM 转档成功并保存: {audio_url} (MP3 大小: {len(mp3_data)})")
+            except Exception as e:
+                logging.error(f"[v3.4] Audio Save/Convert Error: {e}")
+        
+        await websocket.send_json({"type": "text_finish"})
+            
+
+        logging.info("[v3.3] 对话完成")
+        
+    except Exception as e:
+        logging.error(f"[v3.3] WebSocket 错误: {e}", exc_info=True)
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
+    finally:
+        logging.info("[v3.3] WebSocket 连接关闭")
