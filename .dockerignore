@@ -50,7 +50,3 @@ admin-frontend/dist/
 
 # 小程序代码(不需要在后端容器中)
 miniprogram/
-
-# 其他
-static/
-!backend/static/
