@@ -6,3 +6,8 @@ __pycache__/
 *.db
 backend.log
 project.private.config.json
+
+# 设计文件
+*.sketch
+*.fig
+*.psd
