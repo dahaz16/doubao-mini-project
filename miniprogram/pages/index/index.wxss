@@ -5,16 +5,37 @@
   height: 100vh;
   position: relative;
   overflow: hidden;
+  /* 流动渐变背景 */
+  background: linear-gradient(-45deg, #ff9a9e, #fad0c4, #fd79a8, #a29bfe, #ffeaa7);
+  background-size: 400% 400%;
+  animation: gradient-flow 9s ease infinite;
+  opacity: 1;
 }
 
-/* 背景图片层 */
-.background-image {
+/* 流动渐变动画 */
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* 半透明遮罩层 - 用于控制整体不透明度 */
+.container::before {
+  content: '';
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: -1;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.4); /* 1 - 0.6 = 0.4 */
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* 标题区域 */
@@ -26,6 +47,7 @@
   top: 259px; /* 固定 259px */
   left: 0;
   right: 0;
+  z-index: 1; /* 确保显示在背景之上 */
 }
 
 .main-title {
@@ -48,6 +70,7 @@
   left: 0;
   right: 0;
   width: 100%;
+  z-index: 1; /* 确保显示在背景之上 */
 }
 
 /* 按钮区域 - 普通流式布局 */

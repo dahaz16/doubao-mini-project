@@ -33,8 +33,11 @@ Page({
         // 当前状态：idle（空闲）、recording（录音中）、thinking（AI思考中）、talking（AI说话中）
         status: 'idle',
 
+        // 用户ID
+        userId: '',
+
         // AI显示的消息（当前AI回复）
-        aiMessage: "你好呀!我叫念念,",
+        aiMessage: "你好呀！我是念念。快跟我说说你过去有意思的事吧～！",
 
         // 用户输入（语音识别结果）
         userInput: "",
@@ -62,7 +65,26 @@ Page({
         audioCounter: 0,
 
         // 用户字幕滚动位置
-        userScrollTop: 0
+        userScrollTop: 0,
+
+        // 用户字幕淡出状态
+        userSubtitleFading: false,
+
+        // 流动背景配置 (可在 WXSS 中手动调整)
+        backgroundConfig: {
+            colors: ['#ff9a9e', '#fad0c4', '#fd79a8', '#a29bfe', '#ffeaa7'],
+            angle: '-45deg',
+            opacity: 0.6,
+            duration: '15s',
+            size: '400% 400%'
+        },
+
+        // 反馈弹窗显示状态
+        showFeedbackModal: false,
+
+        // 导航栏布局信息
+        navTop: 40,  // 默认值
+        navHeight: 32 // 默认值
     },
 
     // ========================================================================
@@ -72,17 +94,17 @@ Page({
     /**
      * ASR语句追踪系统
      * 
-     * 背景：
-     *   火山引擎ASR返回的utterances会动态变化。当第一个句子确认后，
-     *   后续返回的数据中，该句子会消失，新句子的index会重新从0开始。
+     * 问题发现：火山引擎 ASR 在检测到语音停顿后，会将新的语句作为新的 utterance 返回，
+     * 但 index 会从 0 重新开始，导致覆盖之前的内容。
      * 
      * 解决方案：
-     *   使用全局索引偏移量(indexOffset)来确保每个句子存储在正确的位置。
-     *   当index=0的句子确认时，offset+1，后续句子的全局索引 = offset + 本地index。
+     *   - 使用本地递增的 localIndex，而不是火山引擎返回的 index
+     *   - 只在 is_final=true 时才递增 localIndex
+     *   - 临时结果（is_final=false）始终更新当前 localIndex 的内容
      */
-    utterances: [],       // 已确认的语句数组（按全局索引存储）
-    tempUtterances: {},   // 临时语句对象（按全局索引存储，尚未确认的句子）
-    indexOffset: 0,       // 全局索引偏移量
+    utterances: {},       // 所有语句对象（按 localIndex 存储）
+    currentLocalIndex: 0, // 当前本地 index（递增，不重置）
+    recordingSessionId: 0, // 录音会话 ID，每次开始录音递增，用于防止 onStop 回调时序冲突
 
     // ========================================================================
     // 生命周期函数
@@ -93,8 +115,27 @@ Page({
      * 初始化音频播放器和录音管理器
      */
     onLoad() {
+        // 配置全局音频参数：确保在静音模式下也能播放声音（关键修复）
+        wx.setInnerAudioOption({
+            obeyMuteSwitch: false,
+            success: () => {
+                console.log('✅ 音频已配置为不遵循静音开关');
+            },
+            fail: (err) => {
+                console.warn('⚠️ 配置音频参数失败:', err);
+            }
+        });
+
         // 获取用户ID
         const userId = wx.getStorageSync('userId');
+        this.setData({ userId: userId || '' });
+
+        // 计算导航栏位置 (适配胶囊按钮)
+        const menuButton = wx.getMenuButtonBoundingClientRect();
+        this.setData({
+            navTop: menuButton.top,
+            navHeight: menuButton.height
+        });
 
         // 调用后端接口获取最新 AI 消息
         if (userId) {
@@ -109,18 +150,18 @@ Page({
                     } else {
                         // 没有历史消息，使用默认文案
                         console.log("📭 未找到历史 AI 消息，使用默认文案");
-                        this.setData({ aiMessage: "你好呀!我叫念念," });
+                        this.setData({ aiMessage: "你好呀！我是念念。快跟我说说你过去有意思的事吧～！" });
                     }
                 },
                 fail: (err) => {
                     console.error("❌ 获取最新 AI 消息失败:", err);
                     // 接口失败也使用默认文案
-                    this.setData({ aiMessage: "你好呀!我叫念念," });
+                    this.setData({ aiMessage: "你好呀！我是念念。快跟我说说你过去有意思的事吧～！" });
                 }
             });
         } else {
             // 没有 userId，使用默认文案
-            this.setData({ aiMessage: "你好呀!我叫念念," });
+            this.setData({ aiMessage: "你好呀！我是念念。快跟我说说你过去有意思的事吧～！" });
         }
 
         // 初始化对话历史（AI的开场白）
@@ -134,6 +175,9 @@ Page({
 
         // ==================== 初始化录音管理器 ====================
         this.initRecorderManager();
+
+        // ==================== 初始化音效播放器 ====================
+        this.initSoundEffects();
 
         // 注意：ASR WebSocket不在此处连接，而是在录音开始时按需连接
     },
@@ -260,6 +304,56 @@ Page({
     },
 
     /**
+     * ==================== 音效播放器初始化 ====================
+     * 用于播放用户交互音效（开始录音、取消录音、发送消息）
+     */
+    initSoundEffects() {
+        console.log("初始化音效播放器");
+
+        // 创建独立的音效播放器实例
+        this.soundEffectPlayer = wx.createInnerAudioContext();
+        this.soundEffectPlayer.volume = 1.0;  // 最大音量
+        this.soundEffectPlayer.autoplay = false;
+        this.soundEffectPlayer.obeyMuteSwitch = false;  // 不遵循静音开关，确保音效能播放
+
+        // 音效文件路径映射
+        this.soundEffects = {
+            start_recording: '/assets/sounds/start_recording.wav',
+            cancel_recording: '/assets/sounds/cancel_recording.wav',
+            send_message: '/assets/sounds/send_message.wav'
+        };
+
+        // 错误处理（静默失败，不影响主流程）
+        this.soundEffectPlayer.onError((err) => {
+            console.warn('⚠️ 音效播放错误:', err);
+        });
+    },
+
+    /**
+     * 播放音效
+     * @param {string} effectName - 音效名称: 'start_recording' | 'cancel_recording' | 'send_message'
+     */
+    playSoundEffect(effectName) {
+        if (!this.soundEffectPlayer || !this.soundEffects[effectName]) {
+            console.warn(`⚠️ 音效不存在: ${effectName}`);
+            return;
+        }
+
+        try {
+            // 停止当前播放（如果有）
+            this.soundEffectPlayer.stop();
+
+            // 设置音效文件并播放
+            this.soundEffectPlayer.src = this.soundEffects[effectName];
+            this.soundEffectPlayer.play();
+
+            console.log(`🔊 播放音效: ${effectName}`);
+        } catch (e) {
+            console.warn('⚠️ 音效播放失败:', e);
+        }
+    },
+
+    /**
      * 页面卸载时执行
      * 清理WebSocket连接和音频播放
      */
@@ -307,6 +401,21 @@ Page({
         // 清除超时定时器
         if (this.thinkingTimeout) {
             clearTimeout(this.thinkingTimeout);
+        }
+
+        // 清除自动录音定时器
+        if (this.autoRecordTimer) {
+            clearTimeout(this.autoRecordTimer);
+        }
+
+        // 销毁音效播放器
+        if (this.soundEffectPlayer) {
+            try {
+                this.soundEffectPlayer.destroy();
+                console.log("🔇 音效播放器已销毁");
+            } catch (e) {
+                console.warn("音效播放器销毁失败:", e);
+            }
         }
 
         console.log("✅ 资源清理完成");
@@ -369,34 +478,40 @@ Page({
                 if (data.text) {
                     const text = data.text;           // 识别的文字
                     const isFinal = data.is_final || false;  // 是否为最终结果
-                    const index = data.index !== undefined ? data.index : 0;  // 句子本地索引
-                    const globalIndex = this.indexOffset + index;  // 计算全局索引
+                    const volcIndex = data.index !== undefined ? data.index : 0;  // 火山引擎返回的 index
+
+                    // ===== 使用本地 index 避免覆盖问题 =====
+                    // 临时结果：更新当前 localIndex 的内容
+                    // 最终结果：确认当前内容，并递增 localIndex 准备下一句
+
+                    const oldText = this.utterances[this.currentLocalIndex];
+
+                    // 详细日志：检测火山引擎 index 重置问题
+                    if (oldText && volcIndex === 0 && !text.startsWith(oldText.slice(0, 10))) {
+                        console.warn(`🔴 [ASR_FIX] 检测到火山引擎 index 重置！volcIndex=${volcIndex}`);
+                        console.warn(`   使用本地 index=${this.currentLocalIndex} 避免覆盖`);
+                    }
+
+                    // 更新当前 localIndex 的文字
+                    this.utterances[this.currentLocalIndex] = text;
+
+                    // 详细日志
+                    const currentIndices = Object.keys(this.utterances).map(k => parseInt(k)).sort((a, b) => a - b);
+                    console.log(`[ASR_TRACE] volcIdx=${volcIndex}, localIdx=${this.currentLocalIndex}, isFinal=${isFinal}`);
+                    console.log(`[ASR_TRACE] 当前utterances: indices=${JSON.stringify(currentIndices)}, 总字数=${Object.values(this.utterances).join('').length}`);
 
                     if (isFinal) {
-                        // ===== 确认结果处理 =====
-                        // 该句子已确认，不会再变化
-                        this.utterances[globalIndex] = text;
-                        delete this.tempUtterances[globalIndex];
-                        console.log(`✅ ASR确认 [本地=${index}, 全局=${globalIndex}]: ${text.slice(0, 20)}...`);
-
-                        // 关键逻辑：当index=0的句子确认时，说明ASR会"移除"这个句子
-                        // 后续新句子的index会重新从0开始，所以需要增加偏移量
-                        if (index === 0) {
-                            this.indexOffset++;
-                            console.log(`📍 偏移量增加到: ${this.indexOffset}`);
-                        }
+                        console.log(`✅ ASR确认 [localIdx=${this.currentLocalIndex}]: ${text.slice(0, 20)}...`);
+                        // 最终结果：递增 localIndex，准备接收下一句
+                        this.currentLocalIndex++;
                     } else {
-                        // ===== 临时结果处理 =====
-                        // 该句子还在输入中，可能会变化
-                        this.tempUtterances[globalIndex] = text;
-                        console.log(`🟡 ASR临时 [本地=${index}, 全局=${globalIndex}]: ${text.slice(0, 20)}...`);
+                        console.log(`🟡 ASR临时 [localIdx=${this.currentLocalIndex}]: ${text.slice(0, 20)}...`);
                     }
 
                     // ===== 更新显示文本 =====
-                    // 拼接已确认的句子 + 临时句子
-                    const confirmedText = this.utterances.filter(u => u).join('');
-                    const tempText = Object.values(this.tempUtterances).join('');
-                    const displayText = confirmedText + tempText;
+                    // 按 localIndex 顺序拼接所有句子
+                    const indices = Object.keys(this.utterances).map(k => parseInt(k)).sort((a, b) => a - b);
+                    const displayText = indices.map(i => this.utterances[i]).join('');
 
                     // 每次都更新,使用固定大数值滚动到底部
                     this.setData({
@@ -438,25 +553,22 @@ Page({
         this.recorderManager.onFrameRecorded((res) => {
             const { frameBuffer } = res;
 
-            // 检测是否为静音数据（用于调试麦克风问题）
-            const uint8View = new Uint8Array(frameBuffer);
-            let isSilent = true;
-            for (let i = 0; i < uint8View.length; i++) {
-                if (uint8View[i] !== 0) {
-                    isSilent = false;
-                    break;
-                }
-            }
-
-            if (isSilent) {
-                console.warn('🔴 警告: 采集到静音数据!');
-            }
-
             // 通过WebSocket发送音频帧
             if (this.data.socketOpen && this.socket) {
-                this.socket.send({
-                    data: frameBuffer
-                });
+                // WebSocket 已连接：先发送缓存的帧，再发送当前帧
+                if (this.pendingAudioFrames && this.pendingAudioFrames.length > 0) {
+                    console.log(`📤 补发 ${this.pendingAudioFrames.length} 个缓存音频帧`);
+                    for (const buffered of this.pendingAudioFrames) {
+                        this.socket.send({ data: buffered });
+                    }
+                    this.pendingAudioFrames = [];
+                }
+                this.socket.send({ data: frameBuffer });
+            } else {
+                // WebSocket 未连接：缓存音频帧，等连接后补发
+                if (!this.pendingAudioFrames) this.pendingAudioFrames = [];
+                this.pendingAudioFrames.push(frameBuffer);
+                console.log(`📦 缓存音频帧 (待发: ${this.pendingAudioFrames.length})`);
             }
         });
 
@@ -466,42 +578,52 @@ Page({
 
             console.log("录音已停止，文件大小:", fileSize, "时长:", duration);
 
-            // 关闭ASR WebSocket
-            if (this.socket) {
-                console.log("🔌 关闭ASR连接");
-                this.socket.close({ code: 1000, reason: '录音完成' });
-                this.socket = null;
-                this.setData({ socketOpen: false });
-            }
+            // 记录触发本次 onStop 时的 sessionId
+            const sessionIdAtStop = this.recordingSessionId;
+            console.log(`[onStop] sessionId=${sessionIdAtStop}, isRecordingCancelled=${this.isRecordingCancelled}`);
 
-            // ===== 合并临时语句 =====
-            // 录音结束时，将所有临时语句合并到最终结果
-            Object.entries(this.tempUtterances).forEach(([idx, text]) => {
-                if (text && text.trim()) {
-                    this.utterances[parseInt(idx)] = text;
-                }
-            });
-            this.tempUtterances = {};
-
-            // 生成最终文本
-            const finalText = this.utterances.filter(u => u).join('');
-            this.setData({ userInput: finalText });
-            console.log("📝 最终识别文本:", finalText.slice(0, 50));
-
-            // 检查是否被取消
+            // 如果已被取消，立即清理并返回，不进入 setTimeout
             if (this.isRecordingCancelled) {
-                console.log("❌ 录音已取消,不上传语音");
-                this.isRecordingCancelled = false;  // 重置标志位
+                console.log("❌ 录音已取消，不处理 onStop");
+                this.isRecordingCancelled = false;
                 return;
             }
 
-            // 保存录音文件路径待上传
-            this.pendingVoicePath = tempFilePath;
-
-            // 延迟发送（确保 UI 更新完成）
+            // ===== 延迟关闭ASR WebSocket =====
+            // 重要：等待最后的ASR响应
             setTimeout(() => {
-                this.handleSend();
-            }, 500);
+                // 检查 sessionId 是否过期（用户可能已经开始了新一轮录音）
+                if (this.recordingSessionId !== sessionIdAtStop) {
+                    console.log(`⏭️ onStop 回调过期: 当前session=${this.recordingSessionId}, 触发时session=${sessionIdAtStop}，跳过`);
+                    return;
+                }
+
+                if (this.socket) {
+                    console.log("🔌 关闭ASR连接");
+                    this.socket.close({ code: 1000, reason: '录音完成' });
+                    this.socket = null;
+                    this.setData({ socketOpen: false });
+                }
+
+                // ===== 生成最终文本 =====
+                const indices = Object.keys(this.utterances).map(k => parseInt(k)).sort((a, b) => a - b);
+                const finalText = indices.map(i => this.utterances[i]).join('');
+                this.setData({ userInput: finalText });
+                console.log("📝 最终识别文本:", finalText.slice(0, 50));
+
+                // 保存录音文件路径待上传
+                this.pendingVoicePath = tempFilePath;
+
+                // 延迟发送（确保 UI 更新完成）
+                setTimeout(() => {
+                    // 再次检查 sessionId 是否过期
+                    if (this.recordingSessionId !== sessionIdAtStop) {
+                        console.log(`⏭️ handleSend 跳过: session已更新`);
+                        return;
+                    }
+                    this.handleSend();
+                }, 500);
+            }, 1500);
         });
 
         // 录音错误回调
@@ -549,8 +671,14 @@ Page({
             // 停止录音
             this.recorderManager.stop();
             clearInterval(this.data.timer);
-            this.setData({ status: 'idle' });
-            console.log("用户停止录音");
+
+            // 触发字幕背景淡出动画（不清空文字）
+            this.setData({
+                status: 'idle',
+                userSubtitleFading: true
+            });
+
+            console.log("用户停止录音，字幕背景开始淡出");
         } else {
             // 开始录音
             this.startRecordingLogic();
@@ -565,11 +693,16 @@ Page({
     handleCancelRecording() {
         console.log("🚫 用户取消录音");
 
-        // 设置取消标志位
+        // 播放取消录音音效
+        this.playSoundEffect('cancel_recording');
+
+        // 设置取消标志位（必须在 stop() 之前设置，因为 stop 会触发 onStop 回调）
         this.isRecordingCancelled = true;
 
-        // 停止录音
-        this.recorderManager.stop();
+        // 停止录音（会触发 onStop 回调，但回调里会检查 isRecordingCancelled 直接返回）
+        if (this.data.status === 'recording') {
+            this.recorderManager.stop();
+        }
 
         // 清除计时器
         clearInterval(this.data.timer);
@@ -581,52 +714,42 @@ Page({
             this.setData({ socketOpen: false });
         }
 
-        // 重置状态
+        // 重置状态（清空字幕并重置淡出状态）
         this.setData({
             status: 'idle',
             userInput: '',
+            userSubtitleFading: false,
             recordingTime: '00:59'
         });
 
         // 清空 ASR 数据
-        this.utterances = [];
-        this.tempUtterances = {};
-        this.indexOffset = 0;
+        this.utterances = {};
+        this.currentLocalIndex = 0;
+    },
+
+    handleSwitchToKeyboard() {
+        wx.showToast({
+            title: '功能调试中，先语音吧～',
+            icon: 'none',
+            duration: 2000
+        });
     },
 
     /**
- * 测试功能：切换不同行数的测试文字
- * 
- * 每行16个字，生成1-6行的测试文字
- */
-    handleSwitchToKeyboard() {
-        const testTexts = [
-            '这是一行测试文字啊', // 1行 (8字)
-            '这是两行测试文字这是两行测试文字这是两行测试', // 2行 (24字)
-            '这是三行测试文字这是三行测试文字这是三行测试文字这是三行测试文字这是三行测试', // 3行 (40字)
-            '这是四行测试文字这是四行测试文字这是四行测试文字这是四行测试文字这是四行测试文字这是四行测试文字这是四行', // 4行 (56字)
-            '这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行测试文字这是五行', // 5行 (72字)
-            '这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行测试文字这是六行' // 6行 (88字)
-        ];
-
-        // 获取当前测试索引
-        if (!this.data.testIndex) {
-            this.setData({ testIndex: 0 });
-        }
-
-        // 切换到下一个测试文字
-        const nextIndex = (this.data.testIndex + 1) % testTexts.length;
-        this.setData({
-            aiMessage: testTexts[nextIndex],
-            testIndex: nextIndex,
-            status: 'idle',
-            scrollTop: Date.now() // 使用时间戳确保每次都是新值,触发滚动
-        });
-
-        wx.showToast({
-            title: `测试：${nextIndex + 1}行文字`,
-            icon: 'none',
-            duration: 1000
+     * 返回按钮点击处理
+     * 
+     * 返回到上一个页面
+     */
+    handleGoBack() {
+        console.log("🔙 用户点击返回按钮");
+        wx.navigateBack({
+            delta: 1,
+            fail: () => {
+                // 如果没有上一页，则返回首页
+                wx.switchTab({
+                    url: '/pages/index/index'
+                });
+            }
         });
     },
 
@@ -634,28 +757,13 @@ Page({
      * 开始录音逻辑
      * 
      * 执行顺序：
-     * 1. 重置ASR语句追踪状态
-     * 2. 连接ASR WebSocket
-     * 3. 等待连接建立
-     * 4. 开始录音
+     * 1. 清空上一轮字幕内容
+     * 2. 重置ASR语句追踪状态
+     * 3. 连接ASR WebSocket
+     * 4. 等待连接建立
+     * 5. 开始录音
      */
-    startRecordingLogic() {
-        console.log("开始录音逻辑...");
-
-        // 先停止可能正在进行的录音
-        try {
-            this.recorderManager.stop();
-            console.log("🛑 停止之前的录音");
-        } catch (e) {
-            // 如果没有录音在进行,会报错,忽略即可
-        }
-
-        // 清除计时器
-        if (this.data.timer) {
-            clearInterval(this.data.timer);
-            this.setData({ timer: null });
-        }
-
+    stopTTS() {
         // 如果 TTS 正在播放，停止播放
         if (this.chatSocket) {
             console.log("🛑 TTS 播放中，关闭对话 WebSocket");
@@ -688,27 +796,96 @@ Page({
             this.displayedText = '';
             console.log("🗑️ 清空文本队列");
         }
+    },
+
+    onFeedbackButtonClick() {
+        console.log("[Interview] 点击反馈按钮");
+        console.log("[Interview] userId from data:", this.data.userId);
+
+        // 停止 TTS
+        this.stopTTS();
+
+        // 如果正在思考中 (thinking)，也应该重置状态?
+        // 不，feedback modal 覆盖在上面。
+        // 但是 stopTTS 关掉了 socket。
+        // 如果是 thinking，关掉 socket 会导致接收不到回复。
+        // 用户反馈完后，应该恢复 idle 状态?
+        // 简单起见，点击反馈按钮后，状态设为 idle (如果是 thinking/talking)
+        if (this.data.status === 'thinking' || this.data.status === 'talking') {
+            this.setData({ status: 'idle' });
+        }
+
+        this.setData({ showFeedbackModal: true });
+    },
+
+    onFeedbackModalClose() {
+        this.setData({ showFeedbackModal: false });
+    },
+
+    startRecordingLogic() {
+        console.log("开始录音逻辑...");
+
+        // 🔊 立即播放开始录音音效（在任何延迟之前）
+        this.playSoundEffect('start_recording');
+
+        // 重置取消标志位（重要！避免之前的取消操作影响本次录音）
+        this.isRecordingCancelled = false;
+
+        // 递增录音会话 ID（使上一轮 onStop 回调中的 setTimeout 失效）
+        this.recordingSessionId++;
+        console.log(`[录音] 新会话 sessionId=${this.recordingSessionId}`);
+
+        // 清空上一轮的字幕内容并重置淡出状态
+        this.setData({
+            userInput: '',
+            userSubtitleFading: false
+        });
+
+        // 清除自动录音定时器（用户手动触发录音）
+        if (this.autoRecordTimer) {
+            clearTimeout(this.autoRecordTimer);
+            this.autoRecordTimer = null;
+            console.log("🔕 清除自动录音定时器");
+        }
+
+        // 先停止可能正在进行的录音（只在录音状态时才停止，避免重复调用）
+        if (this.data.status === 'recording') {
+            try {
+                this.recorderManager.stop();
+                console.log("🛑 停止之前的录音");
+            } catch (e) {
+                console.warn("停止录音失败:", e);
+            }
+        }
+
+        // 清除计时器
+        if (this.data.timer) {
+            clearInterval(this.data.timer);
+            this.setData({ timer: null });
+        }
+
+        // 停止 TTS 和清空队列
+        this.stopTTS();
 
         // 重置 ASR 追踪状态
-        this.utterances = [];
-        this.tempUtterances = {};
-        this.indexOffset = 0;
+        this.utterances = {};
+        this.currentLocalIndex = 0;  // 重置本地 index
 
-        // 连接 ASR WebSocket
-        this.connectASRWebSocket();
+        // ==================== 立即切换 UI 状态 ====================
+        // 先显示录音界面，给用户即时反馈
+        this.setData({
+            status: 'recording',
+            seconds: 0,
+            recordingTime: "00:59"
+        });
 
-        // 延迟启动录音，确保 WebSocket 已连接
-        setTimeout(() => {
-            if (this.data.socketOpen) {
-                this.startRecording();
-            } else {
-                console.error("WebSocket 未连接，无法开始录音");
-                wx.showToast({
-                    title: '连接失败，请重试',
-                    icon: 'none'
-                });
-            }
-        }, 800);
+        // ==================== 同时启动录音和 WebSocket 连接 ====================
+        // 重要：先启动录音，再连接 WebSocket
+        // 这样用户听到音效后立即开始录音，没有延迟
+        // WebSocket 连好之前的音频帧缓存在 pendingAudioFrames 中，连好后补发
+        this.pendingAudioFrames = [];  // 初始化音频帧缓存队列
+        this.startRecording();         // 立即开始录音
+        this.connectASRWebSocket();    // 同时连接 WebSocket
     },
 
     /**
@@ -724,12 +901,8 @@ Page({
      * - frameSize: 帧大小（KB），决定回调触发频率
      */
     startRecording() {
-        this.setData({
-            status: 'recording',
-            seconds: 0,
-            recordingTime: "00:59",
-            userInput: ""
-        });
+        // 音效已在 startRecordingLogic() 开始时播放，此处不再重复
+        // UI 状态已在 startRecordingLogic() 中切换，此处不再重复设置
 
         // 启动录音倒计时（60秒）
         this.data.timer = setInterval(() => {
@@ -783,8 +956,13 @@ Page({
         }
 
         console.log("发送消息:", textToSend);
-        // 注释掉状态切换，避免打断用户可能正在进行的下一轮录音
-        // this.setData({ status: 'thinking' });
+
+        // 播放发送消息音效
+        this.playSoundEffect('send_message');
+        this.setData({
+            status: 'thinking',
+            aiMessage: '思考中...'
+        });
 
         // 连接对话WebSocket
         this.connectToChatSocket(textToSend);
@@ -858,7 +1036,16 @@ Page({
 
         // ==================== 重置 WebAudio 状态 ====================
         if (this.audioCtx) {
-            this.audioCtx.resume();
+            // 检查audioCtx状态，如果已关闭则重新创建
+            if (this.audioCtx.state === 'closed') {
+                console.log('🔄 AudioContext已关闭，重新创建');
+                this.audioCtx = wx.createWebAudioContext();
+                this.gainNode = this.audioCtx.createGain();
+                this.gainNode.connect(this.audioCtx.destination);
+                this.gainNode.gain.value = 1.0;
+            } else {
+                this.audioCtx.resume();
+            }
             this.nextStartTime = 0; // 重置调度时间
         }
 
@@ -968,11 +1155,35 @@ Page({
                 // ----- 处理完成信号 -----
                 else if (data.type === 'text_finish') {
                     console.log("✅ 文本流结束");
-                    this.setData({ status: 'idle' });
+                    // 仅在思考中（未收到音频）时重置为 idle，避免打断 talking 状态
+                    if (this.data.status === 'thinking') {
+                        this.setData({ status: 'idle' });
+                    }
+
                     // 清除超时定时器
                     if (this.thinkingTimeout) {
                         clearTimeout(this.thinkingTimeout);
                         this.thinkingTimeout = null;
+                    }
+
+                    // ==================== 自动录音逻辑 ====================
+                    // 计算音频播放剩余时间
+                    if (this.audioCtx && this.nextStartTime) {
+                        const currentTime = this.audioCtx.currentTime;
+                        const delay = Math.max(0, (this.nextStartTime - currentTime) * 1000);
+
+                        console.log(`⏰ TTS 播放剩余时间: ${delay.toFixed(0)}ms，将自动开始录音`);
+
+                        // 清除之前的自动录音定时器（如果有）
+                        if (this.autoRecordTimer) {
+                            clearTimeout(this.autoRecordTimer);
+                        }
+
+                        // 设置自动录音定时器
+                        this.autoRecordTimer = setTimeout(() => {
+                            console.log('🎤 TTS 播放完毕，自动开始录音');
+                            this.startRecordingLogic();
+                        }, delay);
                     }
                 }
                 // ----- 处理错误 -----

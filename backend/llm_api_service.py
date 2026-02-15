@@ -30,14 +30,19 @@ logging.basicConfig(level=logging.INFO)
 # 客户端初始化
 # ============================================================================
 
-def _get_ark_client() -> AsyncArk:
-    """获取 Ark 异步客户端"""
-    api_key = os.getenv("ARK_API_KEY")
+def _get_ark_client(model_info: Dict[str, Any]) -> AsyncArk:
+    """获取 Ark 异步客户端（支持多模型配置）"""
+    api_key = model_info.get('api_key')
+    base_url = model_info.get('base_url')
+    
     if not api_key:
-        raise ValueError("ARK_API_KEY 环境变量未配置")
+        raise ValueError(f"模型 {model_info.get('model_name_cn')} 的 API Key 未配置")
+    
+    if not base_url:
+        raise ValueError(f"模型 {model_info.get('model_name_cn')} 的 Base URL 未配置")
     
     return AsyncArk(
-        base_url="https://ark.cn-beijing.volces.com/api/v3",
+        base_url=base_url,
         api_key=api_key
     )
 
@@ -47,7 +52,8 @@ def _get_model_info(model_id: int) -> Dict[str, Any]:
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT model_id, model_name_cn, api_model_id, input_price, output_price, cache_discount
+                SELECT model_id, model_name_cn, endpoint_id, api_key, base_url,
+                       input_price, output_price, cache_discount
                 FROM base_models
                 WHERE model_id = %s
             """, (model_id,))
@@ -59,10 +65,12 @@ def _get_model_info(model_id: int) -> Dict[str, Any]:
             return {
                 'model_id': row[0],
                 'model_name_cn': row[1],
-                'api_model_id': row[2],
-                'input_price': float(row[3]) if row[3] else 0,
-                'output_price': float(row[4]) if row[4] else 0,
-                'cache_discount': float(row[5]) if row[5] else 0.5,
+                'endpoint_id': row[2],
+                'api_key': row[3],
+                'base_url': row[4],
+                'input_price': float(row[5]) if row[5] else 0,
+                'output_price': float(row[6]) if row[6] else 0,
+                'cache_discount': float(row[7]) if row[7] else 0.5,
             }
 
 
@@ -116,11 +124,11 @@ async def call_intv_llm_stream(
             expire_duration = int(get_config('intv_llm_session_expire_duration', default=3600))
             expire_at = int(time.time()) + expire_duration
         
-        client = _get_ark_client()
+        client = _get_ark_client(model_info)
         
         # 构建请求参数（严格按照 PRD）
         params = {
-            "model": model_info['api_model_id'],
+            "model": model_info['endpoint_id'],
             "input": input_messages,
             "temperature": temperature,
             "stream": True,
@@ -209,6 +217,8 @@ async def call_intv_llm_stream(
 async def call_stn_llm(
     user_id: str,
     input_messages: List[Dict[str, str]],
+    previous_response_id: Optional[str] = None,
+    expire_at: Optional[int] = None,
     temperature: float = None,
     llm_input_str: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -216,10 +226,10 @@ async def call_stn_llm(
     Stn Agent LLM 调用（非流式，JSON 输出）- 异步版本
     
     PRD 二.2 参数映射:
-    - Caching: Disabled
+    - Caching: Enabled (Session 模式) ✅ v3.8 修改
     - Stream: False
     - JSON 模式: text.format.type = "json_object"
-    - 无 previous_response_id（单轮任务）
+    - Previous Response ID: 有值时传入 ✅ v3.8 修改
     
     Returns:
         dict:
@@ -239,20 +249,37 @@ async def call_stn_llm(
         if temperature is None:
             temperature = float(get_config('stn_llm_temp', default=0.1))
         
-        client = _get_ark_client()
+        if expire_at is None:
+            expire_duration = int(get_config('stn_llm_session_expire_duration', default=3600))
+            expire_at = int(time.time()) + expire_duration
+        
+        client = _get_ark_client(model_info)
+        
+        # 检查是否启用 Caching
+        enable_caching = get_config('enable_llm_caching', default='false').lower() == 'true'
         
         # 构建请求参数
         params = {
-            "model": model_info['api_model_id'],
+            "model": model_info['endpoint_id'],
             "input": input_messages,
             "temperature": temperature,
             "stream": False,
-            "store": False,  # Stn 不需要存储
+            "store": True,  # ✅ v3.8: 启用 Session 存储
+            "expire_at": expire_at,  # ✅ v3.8: 设置过期时间
             "thinking": {"type": "disabled"},
             "text": {"format": {"type": "json_object"}},  # JSON 输出模式
         }
         
-        logging.info(f"📝 Stn LLM 调用: model={model_info['model_name_cn']}")
+        if enable_caching:
+            params["extra_body"] = {"caching": {"type": "enabled"}}
+            logging.info(f"📝 Stn LLM Caching: ENABLED (Prev ID: {previous_response_id[:20] if previous_response_id else 'None'}...)")
+        else:
+            logging.info("📝 Stn LLM Caching: DISABLED")
+            
+        if previous_response_id and enable_caching:
+            params["previous_response_id"] = previous_response_id
+        
+        logging.info(f"📝 Stn LLM 调用: model={model_info['model_name_cn']}, caching={enable_caching}")
         
         # 调用 API (Async)
         response = await client.responses.create(**params)
@@ -269,14 +296,20 @@ async def call_stn_llm(
                         if hasattr(content_item, 'text'):
                             content += content_item.text
         
-        # 提取 usage
+        # 提取 usage（包含 cached_tokens）
         usage_data = None
         if hasattr(response, 'usage') and response.usage:
+            cached_tokens = 0
+            if hasattr(response.usage, 'input_tokens_details'):
+                details = response.usage.input_tokens_details
+                if hasattr(details, 'cached_tokens'):
+                    cached_tokens = details.cached_tokens or 0
+            
             usage_data = {
                 'total_tokens': response.usage.total_tokens,
                 'prompt_tokens': getattr(response.usage, 'input_tokens', 0),
                 'completion_tokens': getattr(response.usage, 'output_tokens', 0),
-                'cached_tokens': 0,
+                'cached_tokens': cached_tokens,  # ✅ v3.8: 记录缓存 tokens
             }
         
         # 计算耗时并记录
@@ -294,7 +327,7 @@ async def call_stn_llm(
                 llm_output=content
             )
         
-        logging.info(f"✅ Stn LLM 调用成功: {len(content)} 字符, {duration_ms}ms")
+        logging.info(f"✅ Stn LLM 调用成功: {len(content)} 字符, {duration_ms}ms, cached={usage_data.get('cached_tokens', 0) if usage_data else 0}")
         
         return {
             "success": True,
@@ -352,11 +385,11 @@ async def call_dir_llm(
             expire_duration = int(get_config('dir_llm_session_expire_duration', default=3600))
             expire_at = int(time.time()) + expire_duration
         
-        client = _get_ark_client()
+        client = _get_ark_client(model_info)
         
         # 构建请求参数
         params = {
-            "model": model_info['api_model_id'],
+            "model": model_info['endpoint_id'],
             "input": input_messages,
             "temperature": temperature,
             "stream": False,
@@ -441,6 +474,98 @@ async def call_dir_llm(
 
 
 # ============================================================================
+# Wtr Agent LLM 调用 (非流式, JSON 模式, 无 Session Caching)
+# ============================================================================
+
+async def call_wtr_llm(
+    user_id: str,
+    input_messages: List[Dict[str, str]],
+    temperature: float = None,
+    llm_input_str: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Wtr Agent LLM 调用（非流式，JSON 输出，不使用 Session Caching）- 异步版本
+    
+    写作是一次性任务，不需要 Session 延续，因此：
+    - Caching: Disabled
+    - Stream: False
+    - JSON 模式: text.format.type = "json_object"
+    
+    Returns:
+        dict:
+            - success: bool
+            - content: str (JSON 字符串)
+            - usage: dict
+            - error: str (如果失败)
+    """
+    start_time = time.time()
+    
+    try:
+        # 获取模型信息
+        model_id = int(get_config('wtr_llm_model', default=2))
+        model_info = _get_model_info(model_id)
+        
+        if temperature is None:
+            temperature = float(get_config('wtr_llm_temp', default=0.7))
+        
+        client = _get_ark_client(model_info)
+        
+        # 构建请求参数（不使用 Session Caching）
+        params = {
+            "model": model_info['endpoint_id'],
+            "input": input_messages,
+            "temperature": temperature,
+            "stream": False,
+            "thinking": {"type": "disabled"},
+            "text": {"format": {"type": "json_object"}},  # JSON 输出模式
+        }
+        
+        logging.info(f"✍️  Wtr LLM 调用: model={model_info['model_name_cn']}, temp={temperature}")
+        
+        # 调用 API (Async)
+        response = await client.responses.create(**params)
+        
+        # 提取文本内容
+        content = ""
+        if hasattr(response, 'output') and response.output:
+            for output_item in response.output:
+                if hasattr(output_item, 'content') and output_item.content:
+                    for content_item in output_item.content:
+                        if hasattr(content_item, 'text'):
+                            content += content_item.text
+        
+        # 提取 usage
+        usage_data = None
+        if hasattr(response, 'usage') and response.usage:
+            usage_data = {
+                'total_tokens': response.usage.total_tokens,
+                'input_tokens': getattr(response.usage, 'input_tokens', 0),
+                'output_tokens': getattr(response.usage, 'output_tokens', 0),
+            }
+        
+        # 计算耗时
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        logging.info(f"✅ Wtr LLM 调用成功: {len(content)} 字符, {duration_ms}ms")
+        
+        return {
+            "success": True,
+            "content": content,
+            "usage": usage_data,
+            "duration_ms": duration_ms,
+            "model_id": model_id,
+            "model_name_cn": model_info['model_name_cn']
+        }
+        
+    except Exception as e:
+        logging.error(f"❌ Wtr LLM 调用失败: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+# ============================================================================
 # LLM 调用记录
 # ============================================================================
 
@@ -485,3 +610,53 @@ def _record_llm_usage(
         
     except Exception as e:
         logging.error(f"❌ 记录 LLM 调用失败: {e}")
+
+
+def record_llm_usage(
+    user_id: str,
+    agent: str,
+    llm_input: str,
+    llm_output: str,
+    input_tokens: int,
+    output_tokens: int,
+    total_tokens: int,
+    model_id: int = None,
+    model_name_cn: str = None,
+    duration_ms: int = 0,
+    related_original_text_id: Optional[int] = None
+):
+    """
+    公共 LLM 调用记录函数（供外部调用）
+    
+    Args:
+        user_id: 用户 ID
+        agent: Agent 名称 (Intv/Stn/Dir/Wtr)
+        llm_input: LLM 输入内容
+        llm_output: LLM 输出内容
+        input_tokens: 输入 token 数
+        output_tokens: 输出 token 数
+        total_tokens: 总 token 数
+        model_id: 模型 ID（可选）
+        model_name_cn: 模型中文名（可选）
+        duration_ms: 调用耗时（毫秒）
+        related_original_text_id: 关联的原始文本 ID（可选）
+    """
+    usage = {
+        'total_tokens': total_tokens,
+        'prompt_tokens': input_tokens,
+        'completion_tokens': output_tokens,
+        'cached_tokens': 0
+    }
+    
+    _record_llm_usage(
+        user_id=user_id,
+        agent=agent,
+        model_id=model_id or 0,
+        model_name_cn=model_name_cn or 'Unknown',
+        usage=usage,
+        duration_ms=duration_ms,
+        llm_input=llm_input,
+        llm_output=llm_output,
+        related_original_text_id=related_original_text_id
+    )
+

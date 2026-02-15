@@ -19,13 +19,16 @@ router = APIRouter()
 # ============================================================================
 
 class ConfigUpdate(BaseModel):
-    config_value: str
+    config_value: str | int | float  # 接受字符串、整数或浮点数
 
 class ModelCreate(BaseModel):
     model_name_cn: str
     model_name_en: str
     model_type: str
-    api_model_id: str
+    endpoint_id: str
+    api_key: str
+    base_url: str
+    api_secret: Optional[str] = None
     input_price: Optional[float] = None
     output_price: Optional[float] = None
     cache_discount: Optional[float] = 0.5
@@ -178,6 +181,9 @@ async def get_sys_configs():
 async def update_sys_config(config_key: str, update: ConfigUpdate):
     """更新系统配置"""
     try:
+        # 将 config_value 转换为字符串存储
+        config_value_str = str(update.config_value)
+        
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
@@ -185,12 +191,17 @@ async def update_sys_config(config_key: str, update: ConfigUpdate):
                     SET config_value = %s, updated_time = CURRENT_TIMESTAMP
                     WHERE config_key = %s
                     RETURNING config_key
-                """, (update.config_value, config_key))
+                """, (config_value_str, config_key))
                 
                 if cursor.rowcount == 0:
                     raise HTTPException(status_code=404, detail=f"配置项 {config_key} 不存在")
                 
                 conn.commit()
+                
+                # ✅ v3.9 Fix: 更新配置后清空缓存，确保实时生效
+                from .config_manager import clear_config_cache
+                clear_config_cache()
+                
                 return {"message": "更新成功", "config_key": config_key}
     except HTTPException:
         raise
@@ -210,13 +221,15 @@ async def get_models():
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT model_id, model_name_cn, model_name_en, model_type, api_model_id,
+                    SELECT model_id, model_name_cn, model_name_en, model_type, endpoint_id,
+                           api_key, base_url, api_secret,
                            input_price, output_price, cache_discount, cache_storage_price,
                            cluster_id, remark
                     FROM base_models
                     ORDER BY model_id
                 """)
-                columns = ['model_id', 'model_name_cn', 'model_name_en', 'model_type', 'api_model_id',
+                columns = ['model_id', 'model_name_cn', 'model_name_en', 'model_type', 'endpoint_id',
+                          'api_key', 'base_url', 'api_secret',
                           'input_price', 'output_price', 'cache_discount', 'cache_storage_price',
                           'cluster_id', 'remark']
                 rows = cursor.fetchall()
@@ -242,13 +255,15 @@ async def create_model(model: ModelCreate):
             with conn.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO base_models (
-                        model_name_cn, model_name_en, model_type, api_model_id,
+                        model_name_cn, model_name_en, model_type, endpoint_id,
+                        api_key, base_url, api_secret,
                         input_price, output_price, cache_discount, cache_storage_price,
                         cluster_id, remark
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING model_id
                 """, (
-                    model.model_name_cn, model.model_name_en, model.model_type, model.api_model_id,
+                    model.model_name_cn, model.model_name_en, model.model_type, model.endpoint_id,
+                    model.api_key, model.base_url, model.api_secret,
                     model.input_price, model.output_price, model.cache_discount, model.cache_storage_price,
                     model.cluster_id, model.remark
                 ))
@@ -268,13 +283,15 @@ async def update_model(model_id: int, model: ModelCreate):
             with conn.cursor() as cursor:
                 cursor.execute("""
                     UPDATE base_models
-                    SET model_name_cn = %s, model_name_en = %s, model_type = %s, api_model_id = %s,
+                    SET model_name_cn = %s, model_name_en = %s, model_type = %s, endpoint_id = %s,
+                        api_key = %s, base_url = %s, api_secret = %s,
                         input_price = %s, output_price = %s, cache_discount = %s, cache_storage_price = %s,
                         cluster_id = %s, remark = %s
                     WHERE model_id = %s
                     RETURNING model_id
                 """, (
-                    model.model_name_cn, model.model_name_en, model.model_type, model.api_model_id,
+                    model.model_name_cn, model.model_name_en, model.model_type, model.endpoint_id,
+                    model.api_key, model.base_url, model.api_secret,
                     model.input_price, model.output_price, model.cache_discount, model.cache_storage_price,
                     model.cluster_id, model.remark, model_id
                 ))
@@ -316,16 +333,39 @@ async def delete_model(model_id: int):
 # ============================================================================
 
 @router.get("/config/prompts")
-async def get_prompts():
-    """获取所有提示词配置"""
+async def get_prompts(
+    llm_type: Optional[int] = Query(None, description="LLM 类型筛选: 0=Intv, 1=Stn, 2=Dir"),
+    show_all_versions: bool = Query(False, description="是否显示全部版本（包括未激活的）")
+):
+    """获取提示词配置（支持按 LLM 类型和激活状态筛选）"""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
+                # 构建 WHERE 条件
+                where_conditions = []
+                params = []
+                
+                # LLM 类型筛选
+                if llm_type is not None:
+                    where_conditions.append("llm_type = %s")
+                    params.append(llm_type)
+                
+                # 激活状态筛选
+                if not show_all_versions:
+                    where_conditions.append("is_active = TRUE")
+                
+                where_clause = ""
+                if where_conditions:
+                    where_clause = "WHERE " + " AND ".join(where_conditions)
+                
+                query = f"""
                     SELECT prompt_id, llm_type, prompt_content, remark, is_active, created_time
                     FROM prompt_config
+                    {where_clause}
                     ORDER BY llm_type, prompt_id DESC
-                """)
+                """
+                
+                cursor.execute(query, params)
                 columns = ['prompt_id', 'llm_type', 'prompt_content', 'remark', 'is_active', 'created_time']
                 rows = cursor.fetchall()
                 data = [dict(zip(columns, row)) for row in rows]
@@ -549,7 +589,7 @@ async def get_user_debug_logs_api(
     默认查询最近 24 小时的数据
     """
     try:
-        from debug_log_service import get_user_debug_logs
+        from .debug_log_service import get_user_debug_logs
         
         # 解析时间
         start_dt = None
@@ -736,5 +776,344 @@ async def delete_user_interview_records(user_id: str):
     except Exception as e:
         logging.error(f"❌ 删除用户记录失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+
+# ============================================================================
+# 写作功能管理 API (v0.5)
+# ============================================================================
+
+@router.get("/writing/cachepool")
+async def get_writing_cachepool(user_id: str):
+    """
+    获取用户的写作缓存池内容
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "cachepool": [
+                    {
+                        "topic_id": int,
+                        "topic_title": str,
+                        "topic_content": str,
+                        "word_count": int,
+                        "created_time": str
+                    }
+                ],
+                "total_words": int
+            }
+        }
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # 查询缓存池中的 topic
+                cursor.execute("""
+                    SELECT 
+                        t.topic_id,
+                        t.topic_title,
+                        t.topic_content,
+                        LENGTH(COALESCE(t.topic_title, '') || COALESCE(t.topic_content, '')) as word_count,
+                        wsc.created_time
+                    FROM writing_source_cachepool wsc
+                    JOIN topic t ON wsc.topic_id = t.topic_id
+                    WHERE wsc.user_id = %s
+                    ORDER BY wsc.created_time ASC
+                """, (user_id,))
+                
+                rows = cursor.fetchall()
+                cachepool = []
+                total_words = 0
+                
+                for row in rows:
+                    topic_data = {
+                        'topic_id': row[0],
+                        'topic_title': row[1] or '',
+                        'topic_content': row[2] or '',
+                        'word_count': row[3],
+                        'created_time': row[4].isoformat() if row[4] else None
+                    }
+                    cachepool.append(topic_data)
+                    total_words += row[3]
+                
+                return {
+                    "code": 0,
+                    "message": "success",
+                    "data": {
+                        "cachepool": cachepool,
+                        "total_words": total_words
+                    }
+                }
+                
+    except Exception as e:
+        logging.error(f"获取写作缓存池失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/writing/status")
+async def get_writing_status_admin(user_id: str):
+    """
+    获取用户的写作状态（管理后台专用）
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "ready": bool,  # 是否可以写作
+                "is_first_time": bool,  # 是否首次写作
+                "words_count": int,  # 当前缓存池字数
+                "threshold": int,  # 触发阈值
+                "writing_state": int  # 0=pending, 1=writing
+            }
+        }
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # 获取阈值配置
+                cursor.execute("""
+                    SELECT config_value FROM sys_config
+                    WHERE config_key = 'wtr_cache_pool_limit'
+                """)
+                threshold_result = cursor.fetchone()
+                threshold = int(threshold_result[0]) if threshold_result else 500
+                
+                # 获取写作状态
+                cursor.execute("""
+                    SELECT cachepool_words_count, writing_state
+                    FROM writing_status
+                    WHERE user_id = %s
+                """, (user_id,))
+                status_result = cursor.fetchone()
+                
+                if not status_result:
+                    return {
+                        "code": 0,
+                        "message": "success",
+                        "data": {
+                            "ready": False,
+                            "is_first_time": True,
+                            "words_count": 0,
+                            "threshold": threshold,
+                            "writing_state": 0
+                        }
+                    }
+                
+                words_count, writing_state = status_result
+                
+                # 检查是否已有文章
+                cursor.execute("""
+                    SELECT COUNT(*) FROM memoir_article
+                    WHERE user_id = %s
+                """, (user_id,))
+                article_count = cursor.fetchone()[0]
+                has_articles = article_count > 0
+                
+                # 判断是否ready
+                ready = words_count >= threshold and writing_state == 0
+                
+                return {
+                    "code": 0,
+                    "message": "success",
+                    "data": {
+                        "ready": ready,
+                        "is_first_time": not has_articles,
+                        "words_count": words_count,
+                        "threshold": threshold,
+                        "writing_state": writing_state
+                    }
+                }
+        
+    except Exception as e:
+        logging.error(f"获取写作状态异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/memoir/articles")
+async def get_memoir_articles_admin(user_id: str, chapter_id: Optional[int] = None):
+    """
+    获取回忆录文章列表（管理后台专用）
+    
+    参数:
+        user_id: 用户 ID
+        chapter_id: 章节 ID（可选，不传则返回所有文章）
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "articles": [
+                    {
+                        "section_id": int,
+                        "topic_id": int,
+                        "chapter_id": int,
+                        "chapter_name": str,
+                        "section_name": str,
+                        "section_content": str,
+                        "section_sort_num": int,
+                        "created_time": str
+                    }
+                ]
+            }
+        }
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                if chapter_id:
+                    # 查询指定章节的文章
+                    cursor.execute("""
+                        SELECT 
+                            ma.section_id,
+                            ma.topic_id,
+                            ma.chapter_id,
+                            mc.chapter_name,
+                            ma.section_name,
+                            ma.section_content,
+                            ma.section_sort_num,
+                            ma.created_time
+                        FROM memoir_article ma
+                        JOIN memoir_chapter mc ON ma.chapter_id = mc.chapter_id
+                        WHERE ma.chapter_id = %s
+                        ORDER BY ma.section_sort_num ASC
+                    """, (chapter_id,))
+                else:
+                    # 查询用户的所有文章
+                    cursor.execute("""
+                        SELECT 
+                            ma.section_id,
+                            ma.topic_id,
+                            ma.chapter_id,
+                            mc.chapter_name,
+                            ma.section_name,
+                            ma.section_content,
+                            ma.section_sort_num,
+                            ma.created_time
+                        FROM memoir_article ma
+                        JOIN memoir_chapter mc ON ma.chapter_id = mc.chapter_id
+                        WHERE ma.user_id = %s
+                        ORDER BY mc.chapter_sort_num ASC, ma.section_sort_num ASC
+                    """, (user_id,))
+                
+                rows = cursor.fetchall()
+                articles = []
+                
+                for row in rows:
+                    article_data = {
+                        'section_id': row[0],
+                        'topic_id': row[1],
+                        'chapter_id': row[2],
+                        'chapter_name': row[3] or '',
+                        'section_name': row[4] or '',
+                        'section_content': row[5] or '',
+                        'section_sort_num': row[6],
+                        'created_time': row[7].isoformat() if row[7] else None
+                    }
+                    articles.append(article_data)
+                
+                return {
+                    "code": 0,
+                    "message": "success",
+                    "data": {
+                        "articles": articles
+                    }
+                }
+                
+    except Exception as e:
+        logging.error(f"获取回忆录文章失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/memoir/delete")
+async def delete_user_memoir(user_id: str):
+    """
+    删除用户的所有回忆录文章
+    
+    删除范围:
+    - memoir_article (回忆录文章)
+    - memoir_chapter (回忆录章节) - 可选，如果章节下没有其他文章则删除
+    - writing_source_cachepool (写作缓存池) - 清空
+    - writing_status (写作状态) - 重置 cachepool_words_count 为 0
+    - topic.topic_writing_state - 重置为 0
+    
+    返回:
+        {
+            "code": 0,
+            "message": "删除成功",
+            "data": {
+                "deleted_count": int
+            }
+        }
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # 1. 删除 memoir_article
+                cursor.execute("""
+                    DELETE FROM memoir_article
+                    WHERE user_id = %s
+                """, (user_id,))
+                deleted_articles = cursor.rowcount
+                
+                # 2. 删除没有文章的 memoir_chapter
+                cursor.execute("""
+                    DELETE FROM memoir_chapter
+                    WHERE user_id = %s
+                    AND chapter_id NOT IN (
+                        SELECT DISTINCT chapter_id
+                        FROM memoir_article
+                        WHERE user_id = %s
+                    )
+                """, (user_id, user_id))
+                deleted_chapters = cursor.rowcount
+                
+                # 3. 清空 writing_source_cachepool
+                cursor.execute("""
+                    DELETE FROM writing_source_cachepool
+                    WHERE user_id = %s
+                """, (user_id,))
+                deleted_cachepool = cursor.rowcount
+                
+                # 4. 重置 writing_status
+                cursor.execute("""
+                    UPDATE writing_status
+                    SET cachepool_words_count = 0,
+                        writing_state = 0,
+                        updated_time = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                """, (user_id,))
+                reset_status = cursor.rowcount
+                
+                # 5. 重置 topic 的 topic_writing_state 为 0
+                cursor.execute("""
+                    UPDATE topic
+                    SET topic_writing_state = 0
+                    WHERE user_id = %s AND topic_writing_state IN (1, 2)
+                """, (user_id,))
+                reset_topics = cursor.rowcount
+                
+                conn.commit()
+                
+                logging.info(f"✅ 删除用户 {user_id[:8]}... 的回忆录: {deleted_articles} 篇文章, {deleted_chapters} 个章节, {deleted_cachepool} 个缓存池, 重置 {reset_topics} 个 topic, 重置 writing_status")
+                
+                return {
+                    "code": 0,
+                    "message": "删除成功",
+                    "data": {
+                        "deleted_count": deleted_articles,
+                        "deleted_chapters": deleted_chapters,
+                        "deleted_cachepool": deleted_cachepool,
+                        "reset_topics": reset_topics,
+                        "reset_status": reset_status
+                    }
+                }
+                
+    except Exception as e:
+        logging.error(f"❌ 删除用户回忆录失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
 
 

@@ -1,11 +1,8 @@
 <view class="container">
-  <!-- 背景图片 -->
-  <image class="background-image" src="/images/homepage_background.png" mode="aspectFill"></image>
-  
   <!-- 主标题区域 -->
   <view class="title-section">
     <text class="main-title">感谢参与测试</text>
-    <text class="version-number">v0.0.1 2026011401</text>
+    <text class="version-number">v0.5.16 2026021401</text>
   </view>
 
   <!-- 底部按钮组 -->
@@ -17,7 +14,7 @@
       </button>
       <button class="secondary-btn" bindtap="onViewMemories">
         <image class="btn-icon" src="/images/book.png" mode="aspectFit"></image>
-        <text>查看回忆</text>
+        <text>我的故事</text>
       </button>
     </view>
   </view>

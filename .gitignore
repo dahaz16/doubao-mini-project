@@ -11,3 +11,5 @@ project.private.config.json
 *.sketch
 *.fig
 *.psd
+*.log
+test_db_connection.py.env

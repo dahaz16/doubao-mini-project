@@ -1,4 +1,9 @@
-<view class="container">
+<view class="container {{status === 'thinking' || status === 'talking' ? 'fast-bg' : ''}}">
+  <!-- 返回按钮 -->
+  <view class="back-button" bindtap="handleGoBack" style="top: {{navTop}}px; height: {{navHeight}}px;">
+    <image src="/images/go_back.png" mode="aspectFit"></image>
+  </view>
+  
   <!-- Top 区：AI 虚拟形象 -->
   <view class="top-section">
     <image class="ai-avatar" src="/images/AI_Avatar.png" mode="aspectFit"></image>
@@ -6,7 +11,7 @@
 
   <!-- Middle 区：AI 字幕气泡 -->
   <view class="middle-section">
-    <view class="ai-subtitle-bubble {{status === 'thinking' ? 'thinking-bubble' : ''}}">
+    <view class="ai-subtitle-bubble {{status === 'thinking' || status === 'talking' ? 'active-bubble' : ''}}">
       <scroll-view 
         scroll-y="true" 
         scroll-top="{{scrollTop}}" 
@@ -14,9 +19,16 @@
         enable-flex="true"
         show-scrollbar="{{false}}">
         <view>
-          <text class="ai-subtitle-text {{status === 'thinking' ? 'thinking' : ''}}">{{status === 'thinking' ? '思考中...' : aiMessage}}</text>
+          <text class="ai-subtitle-text">{{aiMessage}}</text>
         </view>
       </scroll-view>
+    </view>
+    <!-- 反馈按钮 (移出气泡，放在下方) -->
+    <view class="feedback-entry" wx:if="{{status !== 'recording' && aiMessage}}">
+      <button class="feedback-btn" bindtap="onFeedbackButtonClick">
+        <image class="feedback-btn-icon" src="/images/feedback_icon.png" mode="heightFix"></image>
+        <text>问题反馈</text>
+      </button>
     </view>
   </view>
 
@@ -26,9 +38,9 @@
     <scroll-view 
         scroll-y="true" 
         scroll-top="{{userScrollTop}}" 
-        class="user-subtitle-scroll"
+        class="user-subtitle-scroll {{userSubtitleFading ? 'fading' : ''}}"
         enable-flex="true"
-        wx:if="{{userInput && status === 'recording'}}">
+        wx:if="{{userInput}}">
         <view class="user-subtitle-bubble">
             <text class="user-subtitle-text">{{userInput}}</text>
         </view>
@@ -92,3 +104,10 @@
     </view>
   </view>
 </view>
+
+<!-- 反馈弹窗 -->
+<feedback-modal 
+  visible="{{showFeedbackModal}}" 
+  user-id="{{userId}}"
+  bind:close="onFeedbackModalClose"
+/>

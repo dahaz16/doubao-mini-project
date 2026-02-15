@@ -226,15 +226,15 @@ async def process_user_input(
         # Step 9: 更新缓存池（AI 回复）
         append_cachepool(user_id, "I", full_response)
         
-        # 再次检查是否触发 Stn
-        should_trigger, current_len = check_cachepool_threshold(user_id)
-        if should_trigger:
-            asyncio.create_task(_trigger_stn_agent(user_id))
+        # ✅ v3.9 Fix: 移除 AI 回复后的重复检查
+        # 原因：用户输入后已经检查过一次，AI 回复后再检查会导致短时间内重复触发 Stn Agent
+        # 因为用户输入和 AI 回复都会累积到缓存池，所以只需在用户输入后检查一次即可
         
         # Step 10: 更新 Intv Session 状态
         word_count = len(user_text) + len(full_response)
         update_intv_session(
             user_id=user_id,
+            session_id=new_response_id,
             previous_response_id=new_response_id,
             word_count_delta=word_count,
             previous_content=_format_dialogue_history(prev_content, user_text, full_response)

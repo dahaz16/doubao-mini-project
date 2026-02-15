@@ -78,12 +78,12 @@ def update_stage(
 
 def insert_topic(
     user_id: str,
-    parent_stage_id: int,
     title: str,
     summary: Optional[str] = None,
-    content: Optional[str] = None
+    content: Optional[str] = None,
+    parent_stage_id: Optional[int] = None
 ) -> Optional[int]:
-    """插入话题记录"""
+    """插入话题记录（支持两阶段处理，parent_stage_id 可为 NULL）"""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
@@ -106,20 +106,43 @@ def update_topic(
     title: Optional[str] = None,
     summary: Optional[str] = None,
     content: Optional[str] = None,
-    parent_stage_id: Optional[int] = None
+    parent_stage_id: Optional[int] = ...
 ) -> bool:
-    """更新话题记录"""
+    """
+    更新话题记录
+    
+    注意：parent_stage_id 使用 ... 作为默认值，以区分"未传参"和"传入 None"
+    - 未传参（...）：保持原值
+    - 传入具体值：更新为该值
+    - 传入 None：设置为 NULL
+    """
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
-                    UPDATE topic 
-                    SET topic_title = COALESCE(%s, topic_title),
-                        topic_summary = COALESCE(%s, topic_summary),
-                        topic_content = COALESCE(%s, topic_content),
-                        parent_stage_id = COALESCE(%s, parent_stage_id)
-                    WHERE topic_id = %s
-                """, (title, summary, content, parent_stage_id, topic_id))
+                # 构建动态 SQL
+                updates = []
+                params = []
+                
+                if title is not None:
+                    updates.append("topic_title = %s")
+                    params.append(title)
+                if summary is not None:
+                    updates.append("topic_summary = %s")
+                    params.append(summary)
+                if content is not None:
+                    updates.append("topic_content = %s")
+                    params.append(content)
+                if parent_stage_id is not ...:
+                    updates.append("parent_stage_id = %s")
+                    params.append(parent_stage_id)
+                
+                if not updates:
+                    return True  # 无需更新
+                
+                params.append(topic_id)
+                sql = f"UPDATE topic SET {', '.join(updates)} WHERE topic_id = %s"
+                
+                cursor.execute(sql, params)
                 conn.commit()
                 logging.info(f"✅ Topic 更新成功: {topic_id}")
                 return True
@@ -134,13 +157,13 @@ def update_topic(
 
 def insert_shot(
     user_id: str,
-    parent_topic_id: int,
     title: str,
     summary: Optional[str] = None,
     content: Optional[str] = None,
-    shot_type: int = 1
+    shot_type: int = 1,
+    parent_topic_id: Optional[int] = None
 ) -> Optional[int]:
-    """插入镜头记录"""
+    """插入镜头记录（支持两阶段处理，parent_topic_id 可为 NULL）"""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
@@ -164,21 +187,43 @@ def update_shot(
     summary: Optional[str] = None,
     content: Optional[str] = None,
     shot_type: Optional[int] = None,
-    parent_topic_id: Optional[int] = None
+    parent_topic_id: Optional[int] = ...
 ) -> bool:
-    """更新镜头记录"""
+    """
+    更新镜头记录
+    
+    注意：parent_topic_id 使用 ... 作为默认值，以区分"未传参"和"传入 None"
+    """
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
-                    UPDATE shot 
-                    SET shot_title = COALESCE(%s, shot_title),
-                        shot_summary = COALESCE(%s, shot_summary),
-                        shot_content = COALESCE(%s, shot_content),
-                        shot_type = COALESCE(%s, shot_type),
-                        parent_topic_id = COALESCE(%s, parent_topic_id)
-                    WHERE shot_id = %s
-                """, (title, summary, content, shot_type, parent_topic_id, shot_id))
+                # 构建动态 SQL
+                updates = []
+                params = []
+                
+                if title is not None:
+                    updates.append("shot_title = %s")
+                    params.append(title)
+                if summary is not None:
+                    updates.append("shot_summary = %s")
+                    params.append(summary)
+                if content is not None:
+                    updates.append("shot_content = %s")
+                    params.append(content)
+                if shot_type is not None:
+                    updates.append("shot_type = %s")
+                    params.append(shot_type)
+                if parent_topic_id is not ...:
+                    updates.append("parent_topic_id = %s")
+                    params.append(parent_topic_id)
+                
+                if not updates:
+                    return True  # 无需更新
+                
+                params.append(shot_id)
+                sql = f"UPDATE shot SET {', '.join(updates)} WHERE shot_id = %s"
+                
+                cursor.execute(sql, params)
                 conn.commit()
                 logging.info(f"✅ Shot 更新成功: {shot_id}")
                 return True
@@ -193,12 +238,12 @@ def update_shot(
 
 def insert_character(
     user_id: str,
-    related_shot_id: int,
     name: str,
     relation: Optional[str] = None,
-    evaluation: Optional[str] = None
+    evaluation: Optional[str] = None,
+    related_shot_id: Optional[int] = None
 ) -> Optional[int]:
-    """插入人物记录"""
+    """插入人物记录（支持两阶段处理，related_shot_id 可为 NULL）"""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
@@ -221,20 +266,40 @@ def update_character(
     name: Optional[str] = None,
     relation: Optional[str] = None,
     evaluation: Optional[str] = None,
-    related_shot_id: Optional[int] = None
+    related_shot_id: Optional[int] = ...
 ) -> bool:
-    """更新人物记录"""
+    """
+    更新人物记录
+    
+    注意：related_shot_id 使用 ... 作为默认值，以区分"未传参"和"传入 None"
+    """
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
-                    UPDATE character 
-                    SET name = COALESCE(%s, name),
-                        relation = COALESCE(%s, relation),
-                        evaluation = COALESCE(%s, evaluation),
-                        related_shot_id = COALESCE(%s, related_shot_id)
-                    WHERE character_id = %s
-                """, (name, relation, evaluation, related_shot_id, character_id))
+                # 构建动态 SQL
+                updates = []
+                params = []
+                
+                if name is not None:
+                    updates.append("name = %s")
+                    params.append(name)
+                if relation is not None:
+                    updates.append("relation = %s")
+                    params.append(relation)
+                if evaluation is not None:
+                    updates.append("evaluation = %s")
+                    params.append(evaluation)
+                if related_shot_id is not ...:
+                    updates.append("related_shot_id = %s")
+                    params.append(related_shot_id)
+                
+                if not updates:
+                    return True  # 无需更新
+                
+                params.append(character_id)
+                sql = f"UPDATE character SET {', '.join(updates)} WHERE character_id = %s"
+                
+                cursor.execute(sql, params)
                 conn.commit()
                 logging.info(f"✅ Character 更新成功: {character_id}")
                 return True
@@ -254,15 +319,45 @@ def insert_storyboard(
     story_content: str
 ) -> Optional[int]:
     """
-    插入故事板记录
+    插入故事板记录（v2024-02-14: 新增去重逻辑）
     
     story_type: 1=Stage, 2=Topic, 3=Shot, 4=Character
     stn_processed_status 默认为 0（新记录，待 Stn 下次使用）
     dir_processed_status 默认为 0（待 Dir 处理）
+    
+    ✅ v2024-02-14 改造：去重写入（方案 A - 保守改造）
+    - 在插入新记录前，删除相同 entity_id 的已处理旧记录
+    - 只删除 stn_processed_status=1 AND dir_processed_status=1 的记录
+    - 避免丢失待处理数据，降低并发风险
+    - 如需回滚，注释掉 DELETE 语句即可
     """
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
+                # ============================================================
+                # 🔧 v2024-02-14 新增：去重逻辑（方案 A - 保守改造）
+                # ============================================================
+                # 删除相同 entity_id 的已处理旧记录，避免 storyboard 重复数据
+                # 只删除已被 Stn 和 Dir 都处理过的记录（status=1），保留待处理记录
+                # 
+                # ⚠️ 如需回滚：注释掉下面 6 行代码即可恢复旧逻辑
+                # ============================================================
+                cursor.execute("""
+                    DELETE FROM storyboard
+                    WHERE user_id = %s 
+                      AND entity_id = %s 
+                      AND story_type = %s
+                      AND stn_processed_status = 1 
+                      AND dir_processed_status = 1
+                """, (user_id, entity_id, story_type))
+                deleted_count = cursor.rowcount
+                if deleted_count > 0:
+                    logging.info(f"🗑️  Storyboard 去重: 删除 {deleted_count} 条已处理旧记录 (entity_id={entity_id}, type={story_type})")
+                # ============================================================
+                # 🔧 去重逻辑结束
+                # ============================================================
+                
+                # 原有逻辑：插入新记录
                 cursor.execute("""
                     INSERT INTO storyboard (user_id, story_type, entity_id, story_content)
                     VALUES (%s, %s, %s, %s)

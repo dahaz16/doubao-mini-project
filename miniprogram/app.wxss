@@ -1,3 +1,44 @@
+/**app.wxss**/
+page {
+  /* ==================== 全局动画/外观配置 ==================== */
+  
+  /* 1. 页面背景配置 */
+  /* [颜色] 支持3-6色，可随意增删 */
+  --bg-gradient-colors: linear-gradient(-45deg, #ff9a9e, #fad0c4, #fd79a8, #a29bfe, #ffeaa7);
+  
+  /* [速度] 流转速度 */
+  --bg-speed-normal: 15s;  /* 静止/默认状态 */
+  --bg-speed-active: 5s;   /* 运行状态 (思考/说话/写作) */
+
+  /* [透明度] 通过白色遮罩控制 (数值越小越透，数值越大越白) */
+  /* 默认状态：背景透明度 0.26 -> 遮罩 0.74 */
+  --bg-mask-opacity-interview: 0.74;
+  --bg-mask-opacity-story: 1.00; 
+  /* 运行状态：背景透明度 0.60 -> 遮罩 0.40 */
+  --bg-mask-opacity-active: 0.40;
+
+
+  /* 2. AI 字幕板边框配置 */
+  /* [颜色] 闪动边框颜色序列 */
+  --bubble-border-gradient: linear-gradient(90deg, #FF6B6B, #FFE66D, #4ECDC4, #45B7D1, #96E6A1, #FF6B6B);
+  
+  /* [速度] 边框流转速度 */
+  --bubble-border-speed: 6s;
+}
+
+/* 全局动画定义：背景流动 */
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 全局动画定义：彩虹边框 */
+@keyframes rainbow-border {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
 /* 全局页面样式 - 清除默认边距 */
 page {
   margin: 0;

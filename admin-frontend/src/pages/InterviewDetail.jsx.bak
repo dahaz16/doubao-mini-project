@@ -1,0 +1,885 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+    Card,
+    Table,
+    Checkbox,
+    DatePicker,
+    Button,
+    Modal,
+    message,
+    Tag,
+    Space,
+    Typography,
+    Timeline,
+    Collapse,
+    Descriptions,
+    Spin
+} from 'antd';
+import { CopyOutlined, FileTextOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import ReactJson from 'react-json-view';
+import dayjs from 'dayjs';
+
+const { RangePicker } = DatePicker;
+const { Text, Title } = Typography;
+
+// 数据方类型配置
+const DATA_TYPE_CONFIG = {
+    user: { label: '用户', color: '#373737' },
+    intv_output: { label: '念念', color: '#373737' },
+    stn_llm: { label: 'Stn LLM', color: '#A6A6A6' },
+    dir_llm: { label: 'Dir LLM', color: '#373737' }
+};
+
+const ALL_DATA_TYPES = Object.keys(DATA_TYPE_CONFIG);
+
+// 尝试解析 JSON 字符串
+const tryParseJSON = (str) => {
+    if (typeof str !== 'string') return str;
+    try {
+        const parsed = JSON.parse(str);
+        if (parsed && typeof parsed === 'object') {
+            return parsed;
+        }
+    } catch (e) {
+        // ignore
+    }
+    return str;
+};
+
+// 隐藏 system role 的 content 字段
+const maskSystemContent = (obj) => {
+    if (!obj || typeof obj !== 'object') return obj;
+
+    if (Array.isArray(obj)) {
+        return obj.map(item => maskSystemContent(item));
+    }
+
+    const newObj = { ...obj };
+
+    // 如果当前对象有 role === 'system',则将其 content 替换为 "-"
+    if (newObj.role === 'system' && 'content' in newObj) {
+        newObj.content = '-';
+    }
+
+    // 递归处理所有嵌套对象
+    for (const key in newObj) {
+        if (typeof newObj[key] === 'object' && newObj[key] !== null) {
+            newObj[key] = maskSystemContent(newObj[key]);
+        }
+    }
+
+    return newObj;
+};
+
+// 内容展示组件 - 使用 ReactJson 展示
+const ContentSection = ({ title, content, color }) => {
+    if (!content && content !== 0) return null;
+
+    let displayContent = content;
+    // 递归尝试解析:如果内容是字符串,尝试解析为 JSON
+    displayContent = tryParseJSON(content);
+
+    // 隐藏 system role 的 content
+    displayContent = maskSystemContent(displayContent);
+
+    // 判断是否为对象/数组(可以用 ReactJson 展示)
+    const isJsonObject = typeof displayContent === 'object' && displayContent !== null;
+
+    return (
+        <div style={{ marginBottom: '16px' }}>
+            <Tag color={color} style={{ marginBottom: '8px', fontSize: '14px', padding: '4px 10px' }}>
+                {title}
+            </Tag>
+            <div style={{
+                backgroundColor: '#f5f5f5',
+                padding: '12px',
+                borderRadius: '6px',
+                border: '1px solid #e8e8e8',
+                maxHeight: '60vh',
+                overflow: 'auto'
+            }}>
+                {isJsonObject ? (
+                    <ReactJson
+                        src={displayContent}
+                        theme="rjv-default"
+                        collapsed={false}
+                        displayDataTypes={false}
+                        enableClipboard={true}
+                        name={false}
+                        style={{ fontSize: '13px', fontFamily: 'Menlo, Monaco, "Courier New", monospace' }}
+                    />
+                ) : (
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'Menlo, Monaco, "Courier New", monospace', fontSize: '13px' }}>
+                        {String(displayContent)}
+                    </pre>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default function InterviewDetail() {
+    const { userId } = useParams();
+    const navigate = useNavigate();
+
+    // 状态管理
+    const [loading, setLoading] = useState(false);
+    const [data, setData] = useState([]);
+    const [userName, setUserName] = useState('');
+    const [total, setTotal] = useState(0);
+    const [page, setPage] = useState(1);
+    const [pageSize] = useState(50);
+
+    // 默认选中所有
+    const [selectedTypes, setSelectedTypes] = useState(['user', 'intv_output', 'stn_llm', 'dir_llm']);
+    const [timeRange, setTimeRange] = useState([
+        dayjs().startOf('day'),
+        dayjs().endOf('day')
+    ]);
+
+    // 弹窗状态
+    const [modalVisible, setModalVisible] = useState(false);
+    const [modalContent, setModalContent] = useState(null);
+
+    // Debug 日志状态
+    const [debugLogsVisible, setDebugLogsVisible] = useState(false);
+    const [debugLogsData, setDebugLogsData] = useState(null);
+    const [debugLogsLoading, setDebugLogsLoading] = useState(false);
+
+    // 缓存池状态
+    const [cachePoolInfo, setCachePoolInfo] = useState({ content: '', length: 0 });
+    const [cachePoolModalVisible, setCachePoolModalVisible] = useState(false);
+    // 额外信息状态
+    const [extraInfo, setExtraInfo] = useState({ intv: {}, director: {} });
+
+    // 音频播放状态
+    const [playingAudio, setPlayingAudio] = useState(null); // 存储当前播放的 Audio 对象
+    const [playingRecordId, setPlayingRecordId] = useState(null); // 存储当前播放的记录ID
+
+    // 获取数据
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({
+                page: page.toString(),
+                page_size: pageSize.toString()
+            });
+
+            if (selectedTypes.length > 0) {
+                params.append('data_types', selectedTypes.join(','));
+            }
+
+            if (timeRange && timeRange[0] && timeRange[1]) {
+                params.append('start_time', timeRange[0].toISOString());
+                params.append('end_time', timeRange[1].toISOString());
+            }
+
+            const response = await fetch(
+                `/admin/api/users/${userId}/interview-details?${params.toString()}`
+            );
+
+            if (!response.ok) {
+                throw new Error('获取数据失败');
+            }
+
+            const result = await response.json();
+
+            if (result.code === 0) {
+                setData(result.data.records);
+                setTotal(result.data.total);
+                if (result.data.user_name) {
+                    setUserName(result.data.user_name);
+                }
+                if (result.data.cache_pool_info) {
+                    setCachePoolInfo(result.data.cache_pool_info);
+                }
+                setExtraInfo({
+                    intv: result.data.intv_info,
+                    director: result.data.director_info
+                });
+            } else {
+                message.error('获取数据失败');
+            }
+        } catch (error) {
+            console.error('获取数据失败:', error);
+            message.error('获取数据失败');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 初始加载和筛选条件变化时重新加载
+    useEffect(() => {
+        fetchData();
+    }, [page, selectedTypes, timeRange]);
+
+    // 复制内容
+    const handleCopy = (content) => {
+        const text = typeof content === 'string'
+            ? content
+            : JSON.stringify(content, null, 2);
+
+        navigator.clipboard.writeText(text).then(() => {
+            message.success('已复制到剪贴板');
+        }).catch(() => {
+            message.error('复制失败');
+        });
+    };
+
+    // 查看详细内容
+    const handleViewDetail = (content) => {
+        setModalContent(content);
+        setModalVisible(true);
+    };
+
+    // 获取 Debug 日志
+    const fetchDebugLogs = async () => {
+        setDebugLogsLoading(true);
+        setDebugLogsVisible(true);
+        try {
+            const params = new URLSearchParams();
+
+            if (timeRange && timeRange[0] && timeRange[1]) {
+                params.append('start_time', timeRange[0].toISOString());
+                params.append('end_time', timeRange[1].toISOString());
+            }
+
+            const response = await fetch(
+                `/admin/api/users/${userId}/debug-logs?${params.toString()}`
+            );
+
+            if (!response.ok) {
+                throw new Error('获取日志失败');
+            }
+
+            const result = await response.json();
+
+            if (result.code === 0) {
+                setDebugLogsData(result.data);
+            } else {
+                message.error('获取日志失败');
+            }
+        } catch (error) {
+            console.error('获取日志失败:', error);
+            message.error('获取日志失败');
+        } finally {
+            setDebugLogsLoading(false);
+        }
+    };
+
+    // 表格列配置
+    const columns = [
+        {
+            title: '数据方',
+            dataIndex: 'data_type',
+            key: 'data_type',
+            width: 100,
+            render: (type, record) => {
+                const config = DATA_TYPE_CONFIG[type];
+                const color = config?.color || '#373737';
+
+                // 如果是用户类型，显示真实用户名
+                let displayText = config?.label || type;
+                if (type === 'user' && record.user_name) {
+                    displayText = record.user_name;
+                }
+
+                return <Text style={{ color }}>{displayText}</Text>;
+            }
+        },
+        {
+            title: '日期',
+            dataIndex: 'date',
+            key: 'date',
+            width: 80,
+            render: (text, record) => {
+                const config = DATA_TYPE_CONFIG[record.data_type];
+                const color = config?.color || '#373737';
+                return <Text style={{ color }}>{dayjs(record.created_time).format("YYYY-MM-DD")}</Text>;
+            }
+        },
+        {
+            title: '时间',
+            dataIndex: 'time',
+            key: 'time',
+            width: 70,
+            render: (text, record) => {
+                const config = DATA_TYPE_CONFIG[record.data_type];
+                const color = config?.color || '#373737';
+                return <Text style={{ color }}>{record.time}</Text>;
+            }
+        },
+        {
+            title: '音频',
+            dataIndex: 'audio_url',
+            key: 'audio_url',
+            width: 40,
+            render: (url, record) => {
+                if (!record.has_audio || !url) {
+                    return <Text type="secondary" style={{ color: '#373737' }}>-</Text>;
+                }
+
+                const isPlaying = playingRecordId === record.record_id;
+
+                return (
+                    <Button
+                        type="link"
+                        size="small"
+                        style={{
+                            color: isPlaying ? '#ff4d4f' : '#1890FF',
+                            padding: 0
+                        }}
+                        onClick={() => {
+                            if (isPlaying) {
+                                // 停止播放
+                                if (playingAudio) {
+                                    playingAudio.pause();
+                                    playingAudio.currentTime = 0;
+                                }
+                                setPlayingAudio(null);
+                                setPlayingRecordId(null);
+                            } else {
+                                // 停止之前的音频
+                                if (playingAudio) {
+                                    playingAudio.pause();
+                                    playingAudio.currentTime = 0;
+                                }
+
+                                // 播放新音频
+                                const audio = new Audio(url);
+                                audio.play().catch(e => {
+                                    message.error('播放失败: ' + e.message);
+                                    setPlayingAudio(null);
+                                    setPlayingRecordId(null);
+                                });
+
+                                // 监听播放结束事件
+                                audio.onended = () => {
+                                    setPlayingAudio(null);
+                                    setPlayingRecordId(null);
+                                };
+
+                                setPlayingAudio(audio);
+                                setPlayingRecordId(record.record_id);
+                            }
+                        }}
+                    >
+                        {isPlaying ? '停止' : '播放'}
+                    </Button>
+                );
+            }
+        },
+        {
+            title: '内容',
+            dataIndex: 'content',
+            key: 'content',
+            width: 760,
+            render: (text, record) => {
+                const config = DATA_TYPE_CONFIG[record.data_type];
+                // 导演提示的内容用橙色
+                const contentColor = record.data_type === 'dir_llm' ? '#FF5200' : config?.color || '#373737';
+
+                // 用户：直接展全部内容
+                if (record.data_type === 'user') {
+                    // 确保取到最完整的内容，不再仅限于 string 判断
+                    const displayContent = record.full_content && typeof record.full_content === 'string'
+                        ? record.full_content
+                        : (record.content || record.content_preview);
+
+                    return (
+                        <div style={{
+                            color: contentColor,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            width: '100%'
+                        }}>
+                            {displayContent}
+                        </div>
+                    );
+                }
+
+                // 其他类型（念念、Stn LLM、Dir LLM）：点击内容区域弹出详情
+                // 念念现在也要弹窗看 Input/Output，但展示上还是优先展示 result
+                // 对于这些类型，preview 和 content 可能不同
+                const displayText = record.content_preview || record.content;
+                return (
+                    <div
+                        style={{
+                            color: contentColor,
+                            cursor: 'pointer', // 增加手型暗示可点击
+                            textDecoration: 'underline dotted', // 加个虚线下划线提示
+                            textUnderlineOffset: '4px'
+                        }}
+                        onClick={() => handleViewDetail(record.full_content)}
+                    >
+                        {displayText}
+                    </div>
+                );
+            }
+        },
+        {
+            title: 'Session ID',
+            dataIndex: 'session_id',
+            key: 'session_id',
+            width: 70,
+            ellipsis: true,
+            render: (text) => <Text style={{ color: '#373737' }}>{text}</Text>
+        },
+        {
+            title: 'Model',
+            dataIndex: 'model_name',
+            key: 'model_name',
+            width: 110,
+            render: (text) => <Text style={{ color: '#373737' }}>{text}</Text>
+        },
+        {
+            title: 'Tokens',
+            dataIndex: 'tokens',
+            key: 'tokens',
+            width: 170,
+            render: (text) => <Text style={{ color: '#373737' }}>{text}</Text>
+        },
+        {
+            title: 'Prompt',
+            dataIndex: 'prompt',
+            key: 'prompt',
+            width: 60,
+            render: (text) => <Text style={{ color: '#373737' }}>{text}</Text>
+        },
+        {
+            title: '操作',
+            key: 'action',
+            width: 100,
+            fixed: 'right',
+            render: (_, record) => (
+                <Button
+                    type="link"
+                    style={{
+                        color: '#1890FF',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2px' // 缩小图标与文字距离
+                    }}
+                    onClick={() => handleCopy(record.full_content)}
+                >
+                    <CopyOutlined />
+                    <span>复制内容</span>
+                </Button>
+            )
+        }
+    ];
+
+    // 数据方类型选项
+    const dataTypeOptions = ALL_DATA_TYPES.map(type => ({
+        label: DATA_TYPE_CONFIG[type].label,
+        value: type
+    }));
+
+    return (
+        <div style={{ padding: '24px' }}>
+            {/* 头部 */}
+            <Card style={{ marginBottom: '8px', position: 'relative' }}>
+                {/* 查看日志按钮 - 绝对定位在右上角 */}
+                <Button
+                    type="primary"
+                    icon={<FileTextOutlined />}
+                    onClick={fetchDebugLogs}
+                    style={{ position: 'absolute', top: '24px', right: '24px' }}
+                >
+                    查看日志
+                </Button>
+
+                {/* 标题和信息垂直排列 */}
+                <div>
+                    <Title level={4} style={{ margin: 0, marginBottom: '12px' }}>
+                        用户采访详情 - {userName || userId}
+                    </Title>
+
+                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        {/* 缓存池信息 - 纯文字,左对齐,点击查看 */}
+                        <div
+                            style={{ fontSize: '13px', color: '#1890ff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                            onClick={() => setCachePoolModalVisible(true)}
+                        >
+                            <span style={{ textDecoration: 'underline' }}>
+                                当前缓存池字数: {cachePoolInfo?.length || 0}
+                            </span>
+                        </div>
+
+                        {/* Intv Session 信息 */}
+                        <div style={{ fontSize: '13px', color: '#595959' }}>
+                            Intv session：{extraInfo?.intv?.session_id || '-'}，字数：{extraInfo?.intv?.word_count || 0}
+                        </div>
+
+                        {/* 最新导演提示 */}
+                        <div style={{ fontSize: '13px', color: '#fa8c16' }}>
+                            最新导演提示：{extraInfo?.director?.latest_hint || '无'} <span style={{ color: '#8c8c8c', marginLeft: '8px' }}>{extraInfo?.director?.time_str}</span>
+                        </div>
+
+                        {/* 筛选器 - 横向排列 */}
+                        <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <Text strong style={{ marginRight: '8px' }}>数据方类型：</Text>
+                                <Checkbox.Group
+                                    options={dataTypeOptions}
+                                    value={selectedTypes}
+                                    onChange={(values) => {
+                                        setSelectedTypes(values);
+                                        setPage(1);
+                                    }}
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <Text strong style={{ marginRight: '8px' }}>时间范围：</Text>
+                                <RangePicker
+                                    showTime
+                                    format="YYYY-MM-DD HH:mm:ss"
+                                    value={timeRange}
+                                    onChange={(dates) => {
+                                        setTimeRange(dates);
+                                        setPage(1);
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </Space>
+                </div>
+            </Card>
+
+
+
+            {/* 数据表格 */}
+            <Card>
+                <Table
+                    columns={columns}
+                    dataSource={data}
+                    rowKey="record_id"
+                    loading={loading}
+                    size="small"
+                    scroll={{ x: 1560 }}
+                    pagination={{
+                        current: page,
+                        pageSize: pageSize,
+                        total: total,
+                        showSizeChanger: false,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (newPage) => setPage(newPage)
+                    }}
+                />
+            </Card>
+
+            {/* 内容详情弹窗 */}
+            <Modal
+                title="查看详细内容"
+                open={modalVisible}
+                onCancel={() => setModalVisible(false)}
+                footer={[
+                    <Button key="copy" onClick={() => handleCopy(modalContent)}>
+                        复制全部
+                    </Button>,
+                    <Button key="close" type="primary" onClick={() => setModalVisible(false)}>
+                        关闭
+                    </Button>
+                ]}
+                width={1690}
+                centered
+                styles={{ body: { height: '80vh', overflowY: 'auto' } }}
+            >
+                {(() => {
+                    // 检查是否为标准的 Input/Output 结构
+                    if (modalContent && typeof modalContent === 'object' && ('input' in modalContent || 'output' in modalContent)) {
+                        return (
+                            <div>
+                                <ContentSection title="📥 Input (输入)" content={modalContent.input} color="blue" />
+                                <ContentSection title="📤 Output (输出)" content={modalContent.output} color="green" />
+                            </div>
+                        );
+                    }
+                    // 兜底展示
+                    return <ContentSection title="详细内容" content={modalContent} color="default" />;
+                })()}
+            </Modal>
+
+            {/* 缓存池内容详情弹窗 */}
+            <Modal
+                title={`Chat Cache Pool (当前字数: ${cachePoolInfo?.length || 0})`}
+                open={cachePoolModalVisible}
+                onCancel={() => setCachePoolModalVisible(false)}
+                footer={[
+                    <Button key="close" type="primary" onClick={() => setCachePoolModalVisible(false)}>
+                        关闭
+                    </Button>
+                ]}
+                width={1000}
+                style={{ top: '5vh' }}
+                styles={{ body: { height: '85vh', overflowY: 'auto' } }}
+            >
+                <div style={{
+                    backgroundColor: '#f5f5f5',
+                    padding: '16px',
+                    borderRadius: '6px',
+                    border: '1px solid #e8e8e8',
+                    minHeight: '100%',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                    fontSize: '13px'
+                }}>
+                    {cachePoolInfo?.content || "（空）"}
+                </div>
+            </Modal>
+
+            {/* Debug 日志弹窗 */}
+            <Modal
+                title="Debug 日志查看器"
+                open={debugLogsVisible}
+                onCancel={() => setDebugLogsVisible(false)}
+                footer={[
+                    <Button key="close" onClick={() => setDebugLogsVisible(false)}>
+                        关闭
+                    </Button>
+                ]}
+                width={1800}
+                centered
+            >
+                {debugLogsLoading ? (
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                        <Spin size="large" />
+                    </div>
+                ) : debugLogsData ? (
+                    <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+                        {/* Narration Status */}
+                        <Collapse defaultActiveKey={['1']} style={{ marginBottom: '16px' }}>
+                            <Collapse.Panel header="📊 Narration Status (Session 状态)" key="1">
+                                {debugLogsData.narration_status ? (
+                                    <Descriptions bordered size="small" column={2}>
+                                        <Descriptions.Item label="Intv Session ID" span={2}>
+                                            {debugLogsData.narration_status.intv_llm_session_id || '-'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Intv Word Count">
+                                            {debugLogsData.narration_status.intv_llm_session_word_count}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Intv Expire At">
+                                            {debugLogsData.narration_status.intv_llm_session_expire_at || '-'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Intv Previous Response ID" span={2}>
+                                            {debugLogsData.narration_status.intv_llm_session_previous_response_id || '-'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Intv Hint ID">
+                                            {debugLogsData.narration_status.intv_llm_hint_id || '-'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Stn Session ID" span={2}>
+                                            {debugLogsData.narration_status.stn_llm_session_id || '-'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Stn Word Count">
+                                            {debugLogsData.narration_status.stn_llm_session_word_count}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Dir Session ID" span={2}>
+                                            {debugLogsData.narration_status.dir_llm_session_id || '-'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Cachepool Content" span={2}>
+                                            <pre style={{ maxHeight: '100px', overflow: 'auto', margin: 0 }}>
+                                                {debugLogsData.narration_status.chat_cachepool_content || '-'}
+                                            </pre>
+                                        </Descriptions.Item>
+                                    </Descriptions>
+                                ) : (
+                                    <Text type="secondary">无数据</Text>
+                                )}
+                            </Collapse.Panel>
+                        </Collapse>
+
+                        {/* Active Prompts */}
+                        <Collapse style={{ marginBottom: '16px' }}>
+                            <Collapse.Panel header="💡 Active Prompts (当前激活的提示词)" key="2">
+                                {Object.entries(debugLogsData.active_prompts).map(([agent, prompt]) => (
+                                    <div key={agent} style={{ marginBottom: '16px' }}>
+                                        <Text strong>{agent.toUpperCase()} Agent:</Text>
+                                        {prompt ? (
+                                            <div>
+                                                <Tag color="blue">Prompt ID: {prompt.prompt_id}</Tag>
+                                                {prompt.remark && <Tag>{prompt.remark}</Tag>}
+                                                <pre style={{
+                                                    marginTop: '8px',
+                                                    padding: '8px',
+                                                    backgroundColor: '#f5f5f5',
+                                                    maxHeight: '150px',
+                                                    overflow: 'auto'
+                                                }}>
+                                                    {prompt.content}
+                                                </pre>
+                                            </div>
+                                        ) : (
+                                            <Text type="secondary"> 无激活提示词</Text>
+                                        )}
+                                    </div>
+                                ))}
+                            </Collapse.Panel>
+                        </Collapse>
+
+                        {/* Timeline Logs */}
+                        <div>
+                            <Text strong style={{ fontSize: '16px' }}>🕒 时间线日志</Text>
+                            <Timeline
+                                style={{ marginTop: '16px' }}
+                                items={debugLogsData.logs.map((log, index) => {
+                                    const date = new Date(log.timestamp);
+                                    const timeStr = `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+                                    let color = 'blue';
+
+                                    if (log.log_type === 'user_input') {
+                                        color = 'green';
+                                    } else if (log.log_type === 'ai_output') {
+                                        color = 'cyan';
+                                    } else if (log.log_type === 'llm_call') {
+                                        color = 'purple';
+                                    } else if (log.log_type === 'asr_call') {
+                                        color = 'orange';
+                                    } else if (log.log_type === 'tts_call') {
+                                        color = 'blue';
+                                    }
+
+                                    return {
+                                        color: color,
+                                        children: (
+                                            <div key={index}>
+                                                <div style={{ marginBottom: '8px' }}>
+                                                    {log.log_type === 'user_input' ? (
+                                                        <>
+                                                            <Tag color={color}>
+                                                                <strong>{log.user_name || '用户'}</strong>
+                                                            </Tag>
+                                                            <span style={{ color: '#A6A6A6', fontSize: '12px' }}>
+                                                                {log.has_audio ? '(语音)' : '(打字)'}
+                                                            </span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Tag color={color}>
+                                                                {log.log_type === 'ai_output' ? 'AI 输出' :
+                                                                    log.log_type === 'llm_call' ? `LLM 调用 (${log.agent})` :
+                                                                        log.log_type === 'asr_call' ? 'ASR 调用' :
+                                                                            log.log_type === 'tts_call' ? 'TTS 调用' : log.log_type}
+                                                            </Tag>
+                                                            {log.model_name && <Tag>{log.model_name}</Tag>}
+                                                            {log.has_audio && log.log_type !== 'user_input' && <Tag color="orange">有音频</Tag>}
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px' }}>
+                                                    {timeStr}
+                                                </div>
+
+                                                {log.log_type === 'llm_call' ? (
+                                                    <Collapse size="small">
+                                                        <Collapse.Panel header="查看详情" key="1">
+                                                            <Descriptions
+                                                                bordered
+                                                                size="small"
+                                                                column={1}
+                                                                labelStyle={{ width: '150px' }}
+                                                            >
+                                                                <Descriptions.Item label="Tokens">
+                                                                    Total: {log.tokens.total},
+                                                                    Prompt: {log.tokens.prompt},
+                                                                    Completion: {log.tokens.completion},
+                                                                    Cached: {log.tokens.cached}
+                                                                </Descriptions.Item>
+                                                                <Descriptions.Item label="Duration">
+                                                                    {log.duration_ms} ms
+                                                                </Descriptions.Item>
+                                                                <Descriptions.Item label="Cost">
+                                                                    ¥{log.cost.toFixed(4)}
+                                                                </Descriptions.Item>
+                                                                <Descriptions.Item label="LLM Input">
+                                                                    <pre style={{
+                                                                        maxHeight: '200px',
+                                                                        overflow: 'auto',
+                                                                        margin: 0,
+                                                                        padding: '8px',
+                                                                        backgroundColor: '#f5f5f5',
+                                                                        whiteSpace: 'pre-wrap',
+                                                                        wordBreak: 'break-word'
+                                                                    }}>
+                                                                        {typeof log.llm_input === 'string'
+                                                                            ? log.llm_input
+                                                                            : JSON.stringify(log.llm_input, null, 2)}
+                                                                    </pre>
+                                                                </Descriptions.Item>
+                                                                <Descriptions.Item label="LLM Output">
+                                                                    <pre style={{
+                                                                        maxHeight: '200px',
+                                                                        overflow: 'auto',
+                                                                        margin: 0,
+                                                                        padding: '8px',
+                                                                        backgroundColor: '#f5f5f5',
+                                                                        whiteSpace: 'pre-wrap',
+                                                                        wordBreak: 'break-word'
+                                                                    }}>
+                                                                        {log.llm_output}
+                                                                    </pre>
+                                                                </Descriptions.Item>
+                                                            </Descriptions>
+                                                        </Collapse.Panel>
+                                                    </Collapse>
+                                                ) : (log.log_type === 'asr_call' || log.log_type === 'tts_call') ? (
+                                                    <Collapse size="small">
+                                                        <Collapse.Panel header="查看详情" key="1">
+                                                            <Descriptions
+                                                                bordered
+                                                                size="small"
+                                                                column={1}
+                                                                labelStyle={{ width: '150px' }}
+                                                            >
+                                                                <Descriptions.Item label="模型名称">
+                                                                    {log.model_name}
+                                                                </Descriptions.Item>
+                                                                <Descriptions.Item label="Duration">
+                                                                    {log.duration_ms} ms
+                                                                </Descriptions.Item>
+                                                                <Descriptions.Item label="Cost">
+                                                                    ¥{log.cost.toFixed(6)}
+                                                                </Descriptions.Item>
+                                                                <Descriptions.Item label="关联文本 ID">
+                                                                    {log.related_text_id}
+                                                                </Descriptions.Item>
+                                                            </Descriptions>
+                                                        </Collapse.Panel>
+                                                    </Collapse>
+                                                ) : (
+                                                    <div style={{
+                                                        padding: '8px',
+                                                        backgroundColor: '#f9f9f9',
+                                                        borderRadius: '4px',
+                                                        maxHeight: '150px',
+                                                        overflow: 'auto'
+                                                    }}>
+                                                        {log.content}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    };
+                                })}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                        <Text type="secondary">暂无日志数据</Text>
+                    </div>
+                )}
+            </Modal>
+
+            {/* 自定义样式 */}
+            <style jsx>{`
+        .data-type-user { color: #1890ff; }
+        .data-type-intv_output { color: #52c41a; }
+        .data-type-stn_llm { color: #13c2c2; }
+        .data-type-dir_llm { color: #f5222d; }
+      `}</style>
+        </div>
+    );
+}

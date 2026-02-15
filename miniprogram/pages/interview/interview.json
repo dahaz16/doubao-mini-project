@@ -1,4 +1,7 @@
 {
     "navigationBarTitleText": "讲述中",
-    "navigationStyle": "custom"
+    "navigationStyle": "custom",
+    "usingComponents": {
+        "feedback-modal": "/components/feedback-modal/feedback-modal"
+    }
 }

@@ -95,9 +95,9 @@ export default function ModelConfig() {
             width: 80,
         },
         {
-            title: 'API Model ID',
-            dataIndex: 'api_model_id',
-            key: 'api_model_id',
+            title: 'Endpoint/App ID',
+            dataIndex: 'endpoint_id',
+            key: 'endpoint_id',
             ellipsis: true,
             width: 200,
         },
@@ -207,11 +207,32 @@ export default function ModelConfig() {
                         </Select>
                     </Form.Item>
                     <Form.Item
-                        label="API Model ID"
-                        name="api_model_id"
-                        rules={[{ required: true, message: '请输入 API Model ID' }]}
+                        label="Endpoint/App ID"
+                        name="endpoint_id"
+                        rules={[{ required: true, message: '请输入 Endpoint ID 或 App ID' }]}
                     >
-                        <Input />
+                        <Input placeholder="LLM: ep-xxxxx | ASR/TTS: App ID" />
+                    </Form.Item>
+                    <Form.Item
+                        label="API Key"
+                        name="api_key"
+                        rules={[{ required: true, message: '请输入 API Key' }]}
+                    >
+                        <Input.Password placeholder="请输入 API 密钥" />
+                    </Form.Item>
+                    <Form.Item
+                        label="API Secret"
+                        name="api_secret"
+                    >
+                        <Input.Password placeholder="ASR/TTS 专用,可选" />
+                    </Form.Item>
+                    <Form.Item
+                        label="Base URL"
+                        name="base_url"
+                        rules={[{ required: true, message: '请输入 Base URL' }]}
+                        initialValue="https://ark.cn-beijing.volces.com/api/v3"
+                    >
+                        <Input placeholder="API 基础地址" />
                     </Form.Item>
                     <Form.Item label="输入价格" name="input_price">
                         <InputNumber style={{ width: '100%' }} step={0.01} />
@@ -225,8 +246,8 @@ export default function ModelConfig() {
                     <Form.Item label="缓存存储价格" name="cache_storage_price">
                         <InputNumber style={{ width: '100%' }} step={0.01} />
                     </Form.Item>
-                    <Form.Item label="集群 ID" name="cluster_id">
-                        <Input />
+                    <Form.Item label="Cluster ID" name="cluster_id">
+                        <Input placeholder="TTS 专用,如: volcano_tts" />
                     </Form.Item>
                     <Form.Item label="备注" name="remark">
                         <Input.TextArea rows={2} />

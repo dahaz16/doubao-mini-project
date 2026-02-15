@@ -42,7 +42,7 @@ def get_user_interview_details(
     """
     # 默认查询所有类型
     if not data_types:
-        data_types = ["user", "intv_output", "intv_input", "stn_input", "stn_output", "dir_input", "dir_output"]
+        data_types = ["user", "intv_output", "stn_llm", "dir_llm", "feedback"]
     
     # 构建 UNION 查询
     union_queries = []
@@ -72,7 +72,7 @@ def get_user_interview_details(
         """)
         params.append(user_id)
     
-    # 2. AI 输出（念念）
+    # 2. AI 输出（念念）- 关联 LLM 处理记录
     if "intv_output" in data_types:
         union_queries.append("""
             SELECT 
@@ -81,74 +81,37 @@ def get_user_interview_details(
                 t.created_time,
                 t.original_text as content,
                 t.has_voice,
-                NULL::TEXT as model_name,
-                NULL::INTEGER as total_tokens,
-                NULL::INTEGER as prompt_tokens,
-                NULL::INTEGER as completion_tokens,
-                NULL::INTEGER as cached_tokens,
-                NULL::TEXT as llm_input,
-                NULL::TEXT as llm_output,
-                NULL::TEXT as agent,
+                p.model_name_cn as model_name,
+                p.total_tokens,
+                p.prompt_tokens,
+                p.completion_tokens,
+                p.cached_tokens,
+                p.input as llm_input,
+                p.output as llm_output,
+                p.agent,
                 u.user_name
             FROM interview_original_text t
             LEFT JOIN users u ON t.user_id = u.user_id
+            -- v3.4 Fix: Intv LLM Log 关联的是触发它的 User Input (上一条消息)，而非 AI Output 本身
+            -- 因此需要通过子查询找到最近的一条 User Input ID 进行关联
+            LEFT JOIN llm_processed p ON p.related_original_text_id = (
+                SELECT t2.interview_original_text_id
+                FROM interview_original_text t2
+                WHERE t2.user_id = t.user_id 
+                  AND t2.interview_original_text_id < t.interview_original_text_id
+                  AND t2.speaker_type = 0
+                ORDER BY t2.interview_original_text_id DESC
+                LIMIT 1
+            ) AND p.agent = 'Intv'
             WHERE t.user_id = %s AND t.speaker_type = 1
         """)
         params.append(user_id)
     
-    # 3. Intv LLM 输入
-    if "intv_input" in data_types:
+    # 3. Stn LLM (原 Stn 输出)
+    if "stn_llm" in data_types:
         union_queries.append("""
             SELECT 
-                'intv_input' as data_type,
-                CAST(p.model_processed_id AS TEXT) as record_id,
-                p.created_time,
-                p.input as content,
-                FALSE as has_voice,
-                p.model_name_cn as model_name,
-                p.total_tokens,
-                p.prompt_tokens,
-                p.completion_tokens,
-                p.cached_tokens,
-                p.input as llm_input,
-                p.output as llm_output,
-                p.agent,
-                u.user_name
-            FROM llm_processed p
-            LEFT JOIN users u ON p.user_id = u.user_id
-            WHERE p.user_id = %s AND p.agent = 'Intv' AND p.input IS NOT NULL
-        """)
-        params.append(user_id)
-    
-    # 4. Stn LLM 输入
-    if "stn_input" in data_types:
-        union_queries.append("""
-            SELECT 
-                'stn_input' as data_type,
-                CAST(p.model_processed_id AS TEXT) as record_id,
-                p.created_time,
-                p.input as content,
-                FALSE as has_voice,
-                p.model_name_cn as model_name,
-                p.total_tokens,
-                p.prompt_tokens,
-                p.completion_tokens,
-                p.cached_tokens,
-                p.input as llm_input,
-                p.output as llm_output,
-                p.agent,
-                u.user_name
-            FROM llm_processed p
-            LEFT JOIN users u ON p.user_id = u.user_id
-            WHERE p.user_id = %s AND p.agent = 'Stn' AND p.input IS NOT NULL
-        """)
-        params.append(user_id)
-    
-    # 5. Stn LLM 输出
-    if "stn_output" in data_types:
-        union_queries.append("""
-            SELECT 
-                'stn_output' as data_type,
+                'stn_llm' as data_type,
                 CAST(p.model_processed_id AS TEXT) as record_id,
                 p.created_time,
                 p.output as content,
@@ -168,35 +131,11 @@ def get_user_interview_details(
         """)
         params.append(user_id)
     
-    # 6. Dir LLM 输入
-    if "dir_input" in data_types:
+    # 4. Dir LLM (原 Dir 输出)
+    if "dir_llm" in data_types:
         union_queries.append("""
             SELECT 
-                'dir_input' as data_type,
-                CAST(p.model_processed_id AS TEXT) as record_id,
-                p.created_time,
-                p.input as content,
-                FALSE as has_voice,
-                p.model_name_cn as model_name,
-                p.total_tokens,
-                p.prompt_tokens,
-                p.completion_tokens,
-                p.cached_tokens,
-                p.input as llm_input,
-                p.output as llm_output,
-                p.agent,
-                u.user_name
-            FROM llm_processed p
-            LEFT JOIN users u ON p.user_id = u.user_id
-            WHERE p.user_id = %s AND p.agent = 'Dir' AND p.input IS NOT NULL
-        """)
-        params.append(user_id)
-    
-    # 7. Dir LLM 输出（导演提示）
-    if "dir_output" in data_types:
-        union_queries.append("""
-            SELECT 
-                'dir_output' as data_type,
+                'dir_llm' as data_type,
                 CAST(p.model_processed_id AS TEXT) as record_id,
                 p.created_time,
                 p.output as content,
@@ -213,6 +152,30 @@ def get_user_interview_details(
             FROM llm_processed p
             LEFT JOIN users u ON p.user_id = u.user_id
             WHERE p.user_id = %s AND p.agent = 'Dir' AND p.output IS NOT NULL
+        """)
+        params.append(user_id)
+
+    # 5. 用户反馈 (Feedback)
+    if "feedback" in data_types:
+        union_queries.append("""
+            SELECT 
+                'feedback' as data_type,
+                CAST(f.feedback_id AS TEXT) as record_id,
+                f.created_time,
+                f.feedback_content as content,
+                CASE WHEN f.feedback_voice_url IS NOT NULL THEN TRUE ELSE FALSE END as has_voice,
+                NULL::TEXT as model_name,
+                NULL::INTEGER as total_tokens,
+                NULL::INTEGER as prompt_tokens,
+                NULL::INTEGER as completion_tokens,
+                NULL::INTEGER as cached_tokens,
+                NULL::TEXT as llm_input,
+                f.feedback_voice_url as llm_output,  -- 借用 llm_output 存储 voice_url
+                NULL::TEXT as agent,
+                u.user_name
+            FROM feedback f
+            LEFT JOIN users u ON f.user_id = u.user_id
+            WHERE f.user_id = %s
         """)
         params.append(user_id)
     
@@ -274,11 +237,94 @@ def get_user_interview_details(
                 record = _format_record_optimized(row, user_id, audio_map, conn)
                 records.append(record)
             
+            # 获取用户名、缓存池内容、Intv Session 信息、最新导演提示
+            cursor.execute("""
+                SELECT 
+                    u.user_name, 
+                    n.chat_cachepool_content,
+                    n.intv_llm_session_id,
+                    n.intv_llm_session_word_count,
+                    h.hint_content,
+                    h.created_time
+                FROM users u 
+                LEFT JOIN narration_status n ON u.user_id = n.user_id 
+                LEFT JOIN (
+                    SELECT DISTINCT ON (user_id) user_id, hint_content, created_time
+                    FROM hintboard
+                    ORDER BY user_id, created_time DESC
+                ) h ON u.user_id = h.user_id
+                WHERE u.user_id = %s
+            """, (user_id,))
+            user_row = cursor.fetchone()
+            
+            fetched_user_name = "未知用户"
+            cache_content = ""
+            intv_session_id = "-"
+            intv_word_count = 0
+            latest_hint = "无"
+            hint_time_str = ""
+            
+            if user_row:
+                fetched_user_name = user_row[0]
+                cache_content = user_row[1] or ""
+                intv_session_id = user_row[2] or "-"
+                intv_word_count = user_row[3] or 0
+                latest_hint = user_row[4] or "无"
+                # 格式化导演提示时间: HH:mm:ss MM-DD
+                if user_row[5]:
+                    from datetime import timedelta
+                    hint_dt = user_row[5]
+                    # 如果是 naive time (无时区)，默认视作 UTC，加 8 小时转北京时间
+                    if hint_dt.tzinfo is None:
+                         hint_dt = hint_dt + timedelta(hours=8)
+                    hint_time_str = hint_dt.strftime("%H:%M:%S %m-%d")
+
+            # 获取当前激活的 Intv Prompt (llm_type=0)
+            active_intv_prompt = ""
+            cursor.execute("""
+                SELECT prompt_content
+                FROM prompt_config
+                WHERE llm_type = 0 AND is_active = TRUE
+                ORDER BY created_time DESC
+                LIMIT 1
+            """)
+            prompt_row = cursor.fetchone()
+            if prompt_row:
+                active_intv_prompt = prompt_row[0]
+
+            # 获取当前激活的 Dir Prompt (llm_type=2)
+            active_dir_prompt = ""
+            cursor.execute("""
+                SELECT prompt_content
+                FROM prompt_config
+                WHERE llm_type = 2 AND is_active = TRUE
+                ORDER BY created_time DESC
+                LIMIT 1
+            """)
+            dir_prompt_row = cursor.fetchone()
+            if dir_prompt_row:
+                active_dir_prompt = dir_prompt_row[0]
+
             return {
+                "user_name": fetched_user_name,
                 "total": total,
                 "page": page,
                 "page_size": page_size,
-                "records": records
+                "records": records,
+                "active_intv_prompt": active_intv_prompt,
+                "active_dir_prompt": active_dir_prompt,
+                "cache_pool_info": {
+                    "content": cache_content,
+                    "length": len(cache_content)
+                },
+                "intv_info": {
+                    "session_id": intv_session_id,
+                    "word_count": intv_word_count
+                },
+                "director_info": {
+                    "latest_hint": latest_hint,
+                    "time_str": hint_time_str
+                }
             }
 
 
@@ -312,12 +358,21 @@ def _format_record_optimized(row: tuple, user_id: str, audio_map: dict, conn) ->
             audio_url = audio_map[text_id]
         else:
             # 2. 兜底逻辑：时间相似度匹配
+            # 2. 兜底逻辑：时间相似度匹配
             audio_url = _get_audio_url_simple(conn, user_id, created_time, data_type)
+    
+    # 特殊处理 feedback 的 audio_url
+    if data_type == 'feedback' and has_voice:
+        # feedback 的 voice_url 存储在 llm_output (row[11]) 中
+        # 如果 row[11] 有值，则覆盖 audio_url
+        if llm_output:
+            audio_url = llm_output
     
     # 格式化内容
     content_str = str(content) if content else ""
     is_long = len(content_str) > 50
-    content_preview = content_str[:50] + "..." if is_long else content_str
+    # v3.4 Fix: 用户要求不截断展示内容
+    content_preview = content_str # content_str[:50] + "..." if is_long else content_str
     
     # 判断是否为 JSON 内容
     is_json = isinstance(content, (dict, list)) or (isinstance(content, str) and content.strip().startswith('{'))
@@ -342,14 +397,15 @@ def _format_record_optimized(row: tuple, user_id: str, audio_map: dict, conn) ->
         "audio_url": audio_url,
         "content": content_str if not is_json else None,
         "content_preview": content_preview,
-        "full_content": {"input": llm_input, "output": llm_output} if llm_input or llm_output else content,
+        "full_content": {"input": llm_input, "output": llm_output} if (llm_input or llm_output) and data_type != 'feedback' else content,
         "is_json": is_json,
         "is_long": is_long,
         "session_id": session_id,
         "model_name": model_name or "-",
         "tokens": tokens_str or "-",
         "prompt": prompt_str or "-",
-        "record_id": f"{data_type}_{record_id}"
+        "record_id": f"{data_type}_{record_id}",
+        "created_time": created_time.isoformat() if created_time else None
     }
 
 

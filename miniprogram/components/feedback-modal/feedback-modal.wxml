@@ -1,0 +1,60 @@
+<view class="feedback-modal" wx:if="{{visible}}">
+  <view class="modal-mask" bindtap="onCancel"></view>
+  <view class="modal-content">
+    <!-- AI 头像 -->
+    <view class="ai-avatar-wrapper">
+        <view class="ai-avatar-bg"> 
+            <image class="ai-avatar" src="/images/AI_Avatar.png" mode="aspectFill"></image>
+        </view>
+    </view>
+    
+    <!-- 固定文案 (AI 气泡样式) -->
+    <view class="ai-subtitle-bubble">
+        <view class="hint-text-wrapper">
+            <text class="hint-text">我当前训练数据还不够，可能有点傻呼呼的。你可以随时在此说出你的任何想法。感谢啦～</text>
+        </view>
+    </view>
+    
+    <!-- 中间区域：文本显示 + 麦克风 -->
+    <view class="feedback-input-area">
+        <!-- 反馈内容展示区 -->
+        <scroll-view class="feedback-content-scroll" scroll-y="{{true}}">
+            <text class="{{feedbackText ? 'content-text' : 'placeholder-text'}}">{{feedbackText || '您可点击麦克风直接说'}}</text>
+        </scroll-view>
+
+        <!-- 麦克风按钮 (悬浮居中) -->
+        <view wx:if="{{!isRecording}}" class="mic-float-btn" bindtap="onStartRecording">
+             <image src="/images/microphone_white.png" mode="aspectFit"></image>
+        </view>
+
+        <!-- 录音中界面 (覆盖在输入框上) -->
+        <view wx:if="{{isRecording}}" class="recording-overlay">
+            <!-- 中央指示器 (点击完成录音) -->
+            <view class="voice-indicator" catchtap="onConfirmRecording">
+                <view class="voice-waveform">
+                    <view class="wave-bar"></view>
+                    <view class="wave-bar"></view>
+                    <view class="wave-bar"></view>
+                    <view class="wave-bar"></view>
+                    <view class="wave-bar"></view>
+                    <view class="wave-bar"></view>
+                </view>
+                <text class="voice-timer">{{recordingTime}}</text>
+                <image class="stop-icon" src="/images/stop_recording_icon.png" mode="aspectFit"></image>
+            </view>
+        </view>
+    </view>
+
+    <!-- 底部操作区域 -->
+    <view class="submit-actions">
+         <button class="action-btn cancel" bindtap="onCancel">算了</button>
+         <button 
+            class="action-btn submit {{!canSubmit || isRecording ? 'disabled' : ''}}" 
+            bindtap="onSubmit"
+        >
+            <image wx:if="{{canSubmit && !isRecording}}" src="/images/send_feedback_icon.png" class="submit-btn-icon" mode="aspectFit"></image>
+            告诉啊拓
+        </button>
+    </view>
+  </view>
+</view>

@@ -3,7 +3,16 @@ Page({
         showModal: false,
         showAuthModal: false,
         avatarUrl: '',     // 临时/选中的头像路径
-        nickname: ''       // 输入的昵称
+        nickname: '',      // 输入的昵称
+
+        // 流动背景配置 (可在 WXSS 中手动调整)
+        backgroundConfig: {
+            colors: ['#ff9a9e', '#fad0c4', '#fd79a8', '#a29bfe', '#ffeaa7'],
+            angle: '-45deg',
+            opacity: 0.6,
+            duration: '15s',
+            size: '400% 400%'
+        }
     },
 
     /**
@@ -14,11 +23,13 @@ Page({
     },
 
     /**
-     * 点击"查看回忆"按钮
+     * 点击"我的故事"按钮
      */
     async onViewMemories() {
         await this.handleUserAction(() => {
-            this.setData({ showModal: true });
+            wx.navigateTo({
+                url: '/pages/story/story'
+            });
         })
     },
 

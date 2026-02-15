@@ -2,6 +2,7 @@
     "pages": [
         "pages/index/index",
         "pages/interview/interview",
+        "pages/story/story",
         "pages/records/records",
         "pages/me/me"
     ],

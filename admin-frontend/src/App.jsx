@@ -9,6 +9,8 @@ import ModelConfig from './pages/ModelConfig';
 import PromptConfig from './pages/PromptConfig';
 import InterviewList from './pages/InterviewList';
 import InterviewDetail from './pages/InterviewDetail';
+import WritingList from './pages/WritingList';
+import WritingDetail from './pages/WritingDetail';
 
 function App() {
   return (
@@ -19,6 +21,8 @@ function App() {
             <Route path="/" element={<InterviewList />} />
             <Route path="/interview" element={<InterviewList />} />
             <Route path="/interview/:userId" element={<InterviewDetail />} />
+            <Route path="/writing" element={<WritingList />} />
+            <Route path="/writing/:userId" element={<WritingDetail />} />
             <Route path="/table/:tableName" element={<TableDetail />} />
             <Route path="/config/sys" element={<SysConfig />} />
             <Route path="/config/models" element={<ModelConfig />} />

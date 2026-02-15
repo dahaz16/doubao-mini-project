@@ -5,21 +5,71 @@ page {
 }
 
 /* ==================== 全局容器 ==================== */
+/* ==================== 全局容器 ==================== */
 .container {
   display: flex;
   flex-direction: column;
   height: 100vh;
   position: relative;
-  overflow: hidden;
-  /* 渐变背景 */
-  background: linear-gradient(135deg, #FFF5F7 0%, #F3F4F6 50%, #ECF6FF 100%);
+  /* 移除 overflow:hidden，允许子元素溢出（如反馈按钮的阴影） */
+  /* overflow: hidden; */
+  /* 流动渐变背景 - 使用全局变量 */
+  background: var(--bg-gradient-colors);
+  background-size: 400% 400%;
+  animation: gradient-flow var(--bg-speed-normal) ease infinite;
+  opacity: 1;
 }
+
+/* 移除本地动画定义，使用 app.wxss 中的全局定义 */
+
+/* 半透明遮罩层 - 用于控制整体不透明度 */
+.container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* 默认状态：使用全局变量 */
+  background: rgba(255, 255, 255, var(--bg-mask-opacity-interview)); 
+  pointer-events: none;
+  z-index: 0;
+  /* 添加过渡动画，使透明度变化平滑 */
+  transition: background 1s ease;
+}
+
+/* 激活状态（思考/说话）：使用全局变量 */
+.container.fast-bg::before {
+  background: rgba(255, 255, 255, var(--bg-mask-opacity-active));
+}
+
+/* ==================== 返回按钮 ==================== */
+.back-button {
+  position: absolute;
+  left: 20px;
+  width: 44px; /* 增大点击区域宽度 */
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* 左对齐 */
+  padding: 0;
+}
+
+.back-button image {
+  width: 32px;
+  height: 32px;
+}
+
+
+
 
 /* ==================== Top 区：AI 虚拟形象 ==================== */
 .top-section {
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
+  z-index: 1; /* 确保显示在背景之上 */
 }
 
 .ai-avatar {
@@ -34,17 +84,22 @@ page {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 0 20px 20px 20px;
-  overflow: hidden; /* 禁止滚动 */
+  padding: 0 20px 20px 20px; /* 恢复 padding-top 为 0，消除与头像的缝隙 */
+  overflow: visible; /* 保持 visible，让 -3px 的光晕自然覆盖在头像上 */
+  position: relative;
+  z-index: 10; /* 提高层级，防止被Avatar遮挡 */
 }
 
 .ai-subtitle-bubble {
-  background: rgba(255, 255, 255, 0.9);
+  background: #ffffff; /* 确保背景是纯白且不透明 */
   border-radius: 30px;
   padding: 20px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   max-height: 185px; /* 5行文字: 22px × 1.5 × 5 + 40px(上下padding) = 185px */
-  overflow: hidden;
+  overflow: visible; /* 必须设为 visible 才能显示外发光 */
+  /* transform: translateZ(0);  <-- 移除此行，它导致了背景色混合问题 */
+  position: relative;
+  z-index: auto; /* 让 ::before 的 -1 生效（相对于 middle-section） */
 }
 
 .ai-subtitle-scroll {
@@ -68,14 +123,16 @@ page {
 }
 
 /* 思考中状态：彩虹渐变边框动画 */
-.ai-subtitle-bubble.thinking-bubble {
+/* 思考中/说话中状态：彩虹渐变边框动画 */
+.ai-subtitle-bubble.active-bubble {
   position: relative;
-  background: white;
+  background: #ffffff; /* 再次确认激活时背景纯白 */
   border: none;
   box-shadow: none;
 }
 
-.ai-subtitle-bubble.thinking-bubble::before {
+/* 伪元素常驻，通过 opacity 控制显隐，实现渐变消失 */
+.ai-subtitle-bubble::before {
   content: '';
   position: absolute;
   top: -3px;
@@ -83,15 +140,25 @@ page {
   right: -3px;
   bottom: -3px;
   border-radius: 33px;
-  background: linear-gradient(90deg, #FF6B6B, #FFE66D, #4ECDC4, #45B7D1, #96E6A1, #FF6B6B);
+  /* 使用全局变量 */
+  background: var(--bubble-border-gradient);
   background-size: 300% 100%;
-  animation: rainbow-border 3s linear infinite;
+  animation: rainbow-border var(--bubble-border-speed) linear infinite;
   z-index: -1;
+  
+  /* 关键：默认隐藏，添加过渡动画 */
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
 }
 
-@keyframes rainbow-border {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 300% 50%; }
+/* 激活状态下显示 */
+.ai-subtitle-bubble.active-bubble::before {
+  opacity: 1;
+}
+
+/* 背景加速类 - 使用全局变量 */
+.container.fast-bg {
+  animation-duration: var(--bg-speed-active) !important;
 }
 
 .ai-subtitle-text {
@@ -103,7 +170,51 @@ page {
 
 .ai-subtitle-text.thinking {
   color: #A6A6A6; /* PRD规定: 思考中文字颜色 */
-  font-weight: 400;
+  font-weight: 600;
+}
+
+/* 反馈入口按钮容器 - 位于 AI 气泡下方 */
+.feedback-entry {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end; /* 右对齐 */
+  padding-right: 20px; /* 距右侧 20px */
+  box-sizing: border-box;
+  margin-top: 15px; /* 距离 AI 字幕板 15px */
+  position: relative;
+  z-index: 10;
+}
+
+/* 复用故事页按钮样式 */
+.feedback-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px; 
+  width: 100px !important; /* 强制宽度 100px */
+  height: 36px;
+  min-height: 36px;
+  padding: 0 6px; /* 调整内边距 */
+  margin: 0;
+  line-height: 36px;
+  border-radius: 18px;
+  background: linear-gradient(45deg, #FFB9AC 0%, #E6AACF 100%);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  font-size: 14px; /* 稍微减小字号以适应 90px */
+  font-weight: 600;
+  color: #FFFFFF;
+  border: none;
+}
+
+.feedback-btn::after {
+  border: none;
+}
+
+.feedback-btn-icon {
+  width: 20px; /* 增大图标 */
+  height: 20px;
+  display: block;
+  flex-shrink: 0;
 }
 
 /* ==================== Bottom 区：用户输入区 ==================== */
@@ -112,6 +223,8 @@ page {
   flex-direction: column;
   align-items: center;
   padding-bottom: 40px;
+  position: relative;
+  z-index: 1; /* 确保显示在背景之上 */
 }
 
 /* 用户字幕滚动容器 */
@@ -141,6 +254,15 @@ page {
   overflow-x: hidden !important;
 }
 
+/* 用户字幕淡出动画 - 背景淡出 + 向上移动营造发送感 */
+.user-subtitle-scroll.fading {
+  background: rgba(255, 255, 255, 0) !important;
+  box-shadow: none !important;
+  /* 向上移动 40rpx (约 20px 物理距离，不同机型一致) */
+  transform: translateY(-40rpx);
+  transition: background 0.5s ease, box-shadow 0.5s ease, transform 0.5s ease;
+}
+
 /* 用户字幕气泡 */
 .user-subtitle-bubble {
   width: 100%;
@@ -152,7 +274,14 @@ page {
   font-weight: 600;
   color: #373737;
   line-height: 1.5;
+  transition: opacity 0.5s ease;
 }
+
+/* 淡出状态下的文字：透明度降至 0.5 */
+.user-subtitle-scroll.fading .user-subtitle-text {
+  opacity: 0.5;
+}
+
 
 /* ==================== 控制按钮组 ==================== */
 .control-buttons {

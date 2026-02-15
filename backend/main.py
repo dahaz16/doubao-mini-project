@@ -48,6 +48,22 @@ from .volc_service import synthesize_speech, asr_stream  # 火山引擎服务
 from .volc_tts_client import VolcTTSClient  # TTS客户端
 from .wechat_service import code2session, validate_wechat_config  # 微信服务
 from .user_service import get_user_by_openid, create_user, update_user_info  # 用户服务
+
+# 配置日志 - 同时输出到文件和控制台
+# 确保日志文件路径绝对安全
+log_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend.log')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file_path, mode='a', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+# 强制让 logger 立即生效
+logging.getLogger().setLevel(logging.INFO)
+logging.info(f"✅ 日志系统初始化完成，输出文件: {log_file_path}")
 from .session_service import create_session, validate_session, get_session_response_id, update_session_response_id, extend_session  # Session管理
 from .interview_service import save_original_text, save_original_voice  # 访谈记录服务
 from .cos_service import upload_audio_to_cos  # COS服务
@@ -73,6 +89,52 @@ load_dotenv()
 # ============================================================================
 # 使用全局TTS客户端以复用WebSocket连接，减少握手延迟
 global_tts_client = None
+
+
+# ============================================================================
+# CoT (Chain of Thought) 过滤函数
+# ============================================================================
+def filter_cot_markers(text: str) -> str:
+    """
+    过滤LLM输出中的CoT（思考链）标记和乱码
+    
+    豆包AI在某些推理模式下会输出内部思考标记，这些标记不应该暴露给用户。
+    此函数会移除所有已知的CoT标记模式。
+    
+    Args:
+        text: 原始LLM输出文本
+    
+    Returns:
+        过滤后的干净文本
+    """
+    if not text:
+        return text
+    
+    # 定义所有已知的CoT标记模式
+    cot_patterns = [
+        # SILENT标记（最常见）
+        r'<\[SILENT_never_used_[a-f0-9]+\]>',
+        # think标记
+        r'</think_never_used_[a-f0-9]+>',
+        r'<think_never_used_[a-f0-9]+>',
+        # 其他可能的变体
+        r'<\[THINK_[a-f0-9]+\]>',
+        r'</THINK_[a-f0-9]+>',
+    ]
+    
+    # 应用所有过滤规则
+    filtered_text = text
+    for pattern in cot_patterns:
+        filtered_text = re.sub(pattern, '', filtered_text)
+    
+    # 如果过滤后文本发生了变化，记录日志
+    if filtered_text != text:
+        logging.warning(f"⚠️  Filtered CoT markers from text. Original length: {len(text)}, Filtered length: {len(filtered_text)}")
+        logging.debug(f"Original: {text[:100]}...")
+        logging.debug(f"Filtered: {filtered_text[:100]}...")
+    
+    return filtered_text
+
 
 
 @asynccontextmanager
@@ -169,6 +231,11 @@ if os.path.exists(admin_static_path):
     # 注意：StaticFiles 无法处理前端路由回退，我们需要手动处理
     @app.get("/admin/{path:path}")
     async def admin_spa_fallback(path: str):
+        # 排除 API 路径,让它们由 API 路由处理
+        if path.startswith("api/"):
+            # 返回 404,让 FastAPI 继续查找其他路由
+            raise HTTPException(status_code=404, detail="Not Found")
+        
         # 如果是静态资源（assets 等），返回静态文件
         full_path = os.path.join(admin_static_path, path)
         if os.path.isfile(full_path):
@@ -219,6 +286,13 @@ class UserInfoUpdateRequest(BaseModel):
     profile: str = None
     birth_year: int = None
     birth_month: int = None
+
+
+class FeedbackRequest(BaseModel):
+    """用户反馈请求模型"""
+    user_id: str
+    feedback_content: str
+    feedback_voice_url: Optional[str] = None
 
 
 # ============================================================================
@@ -411,6 +485,84 @@ async def upload_avatar(file: UploadFile = File(...), user_id: str = Form(...)):
         
     except Exception as e:
         logging.error(f"头像上传异常: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.post("/api/feedback/submit")
+async def submit_feedback_endpoint(request: FeedbackRequest):
+    """
+    提交用户反馈
+    """
+    try:
+        from .feedback_service import submit_feedback
+        
+        feedback_id = submit_feedback(
+            user_id=request.user_id,
+            content=request.feedback_content,
+            voice_url=request.feedback_voice_url
+        )
+        
+        return {
+            "code": 200,
+            "message": "反馈提交成功",
+            "data": {
+                "feedback_id": feedback_id
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"提交反馈异常: {e}", exc_info=True)
+        # Log the request data for debugging
+        logging.error(f"Failed request data: user_id={request.user_id}, content={request.feedback_content}, voice_url={request.feedback_voice_url}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/upload_feedback_audio")
+async def upload_feedback_audio_endpoint(file: UploadFile = File(...), user_id: str = Form(...)):
+    """
+    上传反馈语音文件 (自动转换 PCM -> MP3)
+    """
+    try:
+        from .cos_service import upload_file_to_cos
+        from .audio_service import convert_pcm_to_mp3
+        import time
+        
+        # 读取文件内容 (PCM)
+        pcm_content = await file.read()
+        logging.info(f"🎤 [Feedback Upload] Receive PCM: {len(pcm_content)} bytes")
+
+        if len(pcm_content) == 0:
+             raise HTTPException(status_code=400, detail="文件为空")
+        
+        # 转换格式 (PCM -> MP3)
+        try:
+            mp3_data = convert_pcm_to_mp3(pcm_content)
+            logging.info(f"✅ [Feedback Upload] Converted to MP3: {len(mp3_data)} bytes")
+        except Exception as e:
+            logging.error(f"❌ [Feedback Upload] Audio conversion failed: {e}")
+            raise HTTPException(status_code=500, detail=f"音频转换失败: {str(e)}")
+
+        # 生成文件名 (强制 .mp3) - 增加 UUID 防止并发上传文件名冲突
+        import uuid
+        filename = f"feedback_{user_id}_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp3"
+        
+        # 上传到 COS
+        voice_url = upload_file_to_cos(mp3_data, filename, folder="feedback")
+        
+        if not voice_url:
+            raise HTTPException(status_code=500, detail="语音上传失败")
+            
+        return {
+            "code": 200,
+            "message": "上传成功",
+            "data": {
+                "voice_url": voice_url
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"反馈语音上传异常: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -951,17 +1103,22 @@ async def chat_websocket_v33_endpoint(websocket: WebSocket):
         
         async def tts_receiver_task():
             nonlocal full_audio_buffer
+            audio_chunk_count = 0
             try:
+                logging.info("[v3.3] TTS Receiver Task Started")
                 # We need to send "start" signal for audio? No, frontend handles it.
                 async for audio_chunk in tts_generator:
                     if audio_chunk:
-                         full_audio_buffer.extend(audio_chunk)
-                         # Convert to base64 for websocket
-                         b64_data = base64.b64encode(audio_chunk).decode('utf-8')
-                         logging.info(f"[v3.3 DEBUG] Sending audio chunk to FE: {len(audio_chunk)} bytes (b64 len: {len(b64_data)})")
-                         await websocket.send_json({"type": "audio", "data": b64_data})
+                        audio_chunk_count += 1
+                        full_audio_buffer.extend(audio_chunk)
+                        # Convert to base64 for websocket
+                        b64_data = base64.b64encode(audio_chunk).decode('utf-8')
+                        logging.info(f"[v3.3] Sending audio chunk #{audio_chunk_count}: {len(audio_chunk)} bytes (b64 len: {len(b64_data)})")
+                        await websocket.send_json({"type": "audio", "data": b64_data})
+                logging.info(f"[v3.3] TTS Receiver Task Finished. Total chunks: {audio_chunk_count}")
             except Exception as e:
-                logging.error(f"[v3.3] TTS Receiver Error: {e}")
+                logging.error(f"[v3.3] TTS Receiver Error: {e}", exc_info=True)
+
 
         tts_task = asyncio.create_task(tts_receiver_task())
         
@@ -984,13 +1141,18 @@ async def chat_websocket_v33_endpoint(websocket: WebSocket):
             
             elif event_type == "text":
                 chunk = event.get("content", "")
-                full_ai_response += chunk
                 
-                # Send text to frontend
-                await websocket.send_json({"type": "text", "content": chunk})
+                # ⚠️  过滤CoT标记
+                chunk = filter_cot_markers(chunk)
                 
-                # Buffer sentences to avoid TTS stuttering
+                # 只有在过滤后chunk不为空时才处理
                 if chunk:
+                    full_ai_response += chunk
+                    
+                    # Send text to frontend
+                    await websocket.send_json({"type": "text", "content": chunk})
+                    
+                    # Buffer sentences to avoid TTS stuttering
                     sentence_buffer += chunk
                     if any(p in sentence_buffer for p in "。！？；\n") or len(sentence_buffer) >= 60:
                         await text_queue.put(sentence_buffer)
@@ -1062,3 +1224,190 @@ async def chat_websocket_v33_endpoint(websocket: WebSocket):
             pass
     finally:
         logging.info("[v3.3] WebSocket 连接关闭")
+
+
+# ============================================================================
+# Writing API Endpoints (v0.5 - 我的故事页)
+# ============================================================================
+
+@app.get("/api/writing/status")
+async def get_writing_status_endpoint(user_id: str):
+    """
+    获取写作状态
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "ready": bool,  # 是否可以写作
+                "is_first_time": bool,  # 是否首次写作
+                "words_count": int,  # 当前缓存池字数
+                "threshold": int,  # 触发阈值
+                "writing_state": int  # 0=pending, 1=writing
+            }
+        }
+    """
+    try:
+        from .wtr_service import check_writing_readiness
+        from .wtr_cachepool_service import get_writing_status
+        
+        readiness = check_writing_readiness(user_id)
+        status = get_writing_status(user_id)
+        
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                **readiness,
+                "writing_state": status['writing_state'] if status else 0
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"获取写作状态异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/writing/trigger")
+async def trigger_writing_endpoint(request: dict):
+    """
+    触发写作任务
+    
+    请求体:
+        {
+            "user_id": "用户ID"
+        }
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "success": bool,
+                "message": str,
+                "articles_created": int
+            }
+        }
+    """
+    try:
+        user_id = request.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="缺少 user_id 参数")
+        
+        logging.info(f"📝 收到写作触发请求: user_id={user_id}")
+        
+        from .wtr_service import run_wtr_agent
+        
+        result = await run_wtr_agent(user_id)
+        
+        return {
+            "code": 0,
+            "message": "success",
+            "data": result
+        }
+        
+    except Exception as e:
+        logging.error(f"触发写作异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/memoir/chapters")
+async def get_memoir_chapters_endpoint(user_id: str):
+    """
+    获取用户的回忆录章节列表
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "chapters": [
+                    {
+                        "chapter_id": int,
+                        "link_stage_id": int,
+                        "chapter_name": str,
+                        "chapter_sort_num": int,
+                        "created_time": str
+                    }
+                ]
+            }
+        }
+    """
+    try:
+        from .wtr_database import get_chapters_by_user
+        
+        chapters = get_chapters_by_user(user_id)
+        
+        # 转换 datetime 为字符串
+        for chapter in chapters:
+            if chapter.get('created_time'):
+                chapter['created_time'] = chapter['created_time'].isoformat()
+        
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "chapters": chapters
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"获取章节列表异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/memoir/articles")
+async def get_memoir_articles_endpoint(user_id: str, chapter_id: Optional[int] = None):
+    """
+    获取回忆录文章列表
+    
+    参数:
+        user_id: 用户 ID
+        chapter_id: 章节 ID（可选，不传则返回所有文章）
+    
+    返回:
+        {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "articles": [
+                    {
+                        "section_id": int,
+                        "topic_id": int,
+                        "chapter_id": int,
+                        "chapter_name": str,  # 仅当不指定 chapter_id 时返回
+                        "section_name": str,
+                        "section_content": str,
+                        "section_sort_num": int,
+                        "created_time": str
+                    }
+                ]
+            }
+        }
+    """
+    try:
+        from .wtr_database import get_articles_by_chapter, get_all_articles_by_user
+        
+        if chapter_id:
+            articles = get_articles_by_chapter(chapter_id)
+        else:
+            articles = get_all_articles_by_user(user_id)
+        
+        # 转换 datetime 为字符串
+        for article in articles:
+            if article.get('created_time'):
+                article['created_time'] = article['created_time'].isoformat()
+        
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "articles": articles
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"获取文章列表异常: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+

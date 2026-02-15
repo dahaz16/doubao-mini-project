@@ -268,7 +268,7 @@ class VolcTTSClient:
             session_ready = False
             while not session_ready:
                 try:
-                    msg = await asyncio.wait_for(self.websocket.recv(), timeout=10.0)
+                    msg = await asyncio.wait_for(self.websocket.recv(), timeout=20.0)
                     m_type, flags, body = self._parse_header(msg)
                     if m_type == MSG_FULL_SERVER_RESPONSE:
                         event = struct.unpack('!I', body[:4])[0]

@@ -1,0 +1,8 @@
+{
+    "navigationBarTitleText": "我的故事",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "navigationStyle": "custom",
+    "enablePullDownRefresh": true,
+    "backgroundColor": "#ffffff"
+}

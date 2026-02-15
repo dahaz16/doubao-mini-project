@@ -1,0 +1,311 @@
+/* 基础弹窗结构 */
+.feedback-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  /* height: 自动撑开改为固定高度比例，比如 75vh */
+  height: 75vh;
+  width: calc(100vw - 40px); /* 左右固定 20px 边距 */
+  box-sizing: border-box;
+  background-color: #ffffff;
+  border-radius: 40rpx; 
+  padding: 50rpx 40rpx 0 40rpx; /* 底部 padding 设为 0 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1001;
+}
+
+/* AI 头像 */
+.ai-avatar-wrapper {
+  margin-top: 0; 
+  flex-shrink: 0; /* 防止被压缩 */
+  margin-bottom: 0; /* 移除间隙 */
+  display: flex;
+  justify-content: center;
+}
+
+.ai-avatar-bg {
+    width: 260px; /* 130px * 2 (保持 2:1 比例) */
+    height: 130px; /* 固定高度 130px */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 20rpx;
+}
+
+.ai-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 20rpx; /* 匹配外层 */
+}
+
+/* AI 气泡样式 (新增) */
+.ai-subtitle-bubble {
+  background: #ffffff;
+  border-radius: 30px;
+  padding: 20px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  margin-bottom: 20px; /* 距离反馈文字区域 20px */
+  width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  margin-top: -10rpx; /* 稍微向上提一点，彻底消除视觉间隙 */
+}
+
+/* 提示文案容器 */
+.hint-text-wrapper {
+  padding: 0; /* 气泡已有 padding */
+}
+
+/* 提示文案文字 */
+.hint-text {
+  font-size: 22px; 
+  color: #373737; 
+  font-weight: 600; /* 加粗 */
+  text-align: left; /* 气泡内通常左对齐或居中，保持原设计居中也行，这里用 left 像对话 */
+  line-height: 1.5;
+  display: block;
+}
+
+/* 容器：文本 + 麦克风输入区 */
+.feedback-input-area {
+  position: relative;
+  width: 100%;
+  /* height: 380rpx;  <-- 移除固定高度 */
+  flex: 1; /* 自动占据剩余空间 */
+  min-height: 200rpx; /* 防止过小 */
+  margin-bottom: 20px; /* 距离按钮行 20px */
+  background: #f9f9f9;
+  border-radius: 30px; /* 改为 30px */
+  overflow: hidden; 
+}
+
+/* 调试用：容器背景标黄 - 已移除 */
+
+.feedback-content-scroll {
+  width: 100%;
+  height: 100%; /* 占满 flex item */
+  padding: 30rpx 30rpx 100rpx 30rpx; 
+  box-sizing: border-box;
+}
+
+.content-text {
+  font-size: 22px; /* 改为 22px */
+  color: #333;
+  line-height: 1.6;
+  font-weight: 600; /* 加粗 */
+}
+
+.placeholder-text {
+  font-size: 22px; /* 改为 22px */
+  color: #999;
+  line-height: 1.6;
+  font-weight: 600; /* 加粗 */
+}
+
+/* 麦克风悬浮按钮 */
+.mic-float-btn {
+  position: absolute;
+  bottom: 20px; /* 固定 20px */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50px; /* 固定 50px */
+  height: 50px;
+  background: linear-gradient(45deg, #FFB9AC 0%, #E6AACF 100%);
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.mic-float-btn image {
+  width: 25px;
+  height: 25px;
+}
+
+/* 录音覆盖层 */
+/* 录音覆盖层 - 不使用 Flex 垂直居中，改为固定底部距离 */
+.recording-overlay {
+  position: absolute;
+  bottom: 20px; /* 固定 20px, 参考反馈按钮区域 */
+  left: 0;
+  width: 100%;
+  height: auto; 
+  background: transparent;
+  display: flex;
+  justify-content: center; /* 水平居中 */
+  z-index: 20;
+}
+
+/* ==================== 复用 Interview Page 录音样式 ==================== */
+
+/* 圆形按钮 */
+.circle-btn {
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  max-width: 50px;
+  border-radius: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  padding: 0;
+  margin: 0;
+  border: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  line-height: normal;
+}
+
+.circle-btn image {
+  width: 50px;
+  height: 50px;
+}
+
+/* Cancel / Send Specifics */
+.cancel-btn { background: #FFFFFF; }
+.send-btn { background: #FFFFFF; }
+
+/* 音频指示器 */
+.voice-indicator {
+  width: 195px; /* 用户指定宽度 190 + 5 = 195px */
+  /* 移除 scale 缩小，恢复原尺寸 */
+  
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* 改为 flex-start 以便从左侧开始布局 */
+  gap: 15px;
+  height: 50px;
+  border-radius: 25px;
+  background: #373737;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  padding: 0 20px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  position: relative; /* 为绝对定位图标做准备 */
+}
+
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wave-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: #FFFFFF;
+}
+
+/* 动画定义 (直接复用) */
+.wave-bar:nth-child(1) { height: 8px; animation: wave-random-1 0.8s ease-in-out infinite; }
+.wave-bar:nth-child(2) { height: 12px; animation: wave-random-2 0.7s ease-in-out infinite; }
+.wave-bar:nth-child(3) { height: 16px; animation: wave-random-3 0.9s ease-in-out infinite; }
+.wave-bar:nth-child(4) { height: 14px; animation: wave-random-4 0.75s ease-in-out infinite; }
+.wave-bar:nth-child(5) { height: 16px; animation: wave-random-5 0.85s ease-in-out infinite; }
+.wave-bar:nth-child(6) { height: 12px; animation: wave-random-6 0.8s ease-in-out infinite; }
+
+@keyframes wave-random-1 { 0%, 100% { transform: scaleY(1); } 25% { transform: scaleY(1.5); } 50% { transform: scaleY(0.8); } 75% { transform: scaleY(1.8); } }
+@keyframes wave-random-2 { 0%, 100% { transform: scaleY(1); } 30% { transform: scaleY(1.8); } 60% { transform: scaleY(1.2); } 80% { transform: scaleY(0.9); } }
+@keyframes wave-random-3 { 0%, 100% { transform: scaleY(1); } 20% { transform: scaleY(0.9); } 45% { transform: scaleY(1.6); } 70% { transform: scaleY(1.3); } }
+@keyframes wave-random-4 { 0%, 100% { transform: scaleY(1); } 35% { transform: scaleY(1.4); } 55% { transform: scaleY(0.85); } 85% { transform: scaleY(1.7); } }
+@keyframes wave-random-5 { 0%, 100% { transform: scaleY(1); } 15% { transform: scaleY(1.6); } 40% { transform: scaleY(1.1); } 75% { transform: scaleY(0.95); } }
+@keyframes wave-random-6 { 0%, 100% { transform: scaleY(1); } 28% { transform: scaleY(0.88); } 52% { transform: scaleY(1.5); } 78% { transform: scaleY(1.25); } }
+
+.voice-timer {
+  font-size: 20px;
+  font-weight: 600;
+  color: #FFFFFF !important;
+}
+
+/* 底部操作按钮 */
+.submit-actions {
+  display: flex;
+  gap: 30rpx;
+  width: 100%;
+  padding: 0 10rpx;
+  margin-bottom: 30px; /* 距底部 30px */
+  flex-shrink: 0;      /* 固定不压缩 */
+}
+
+.action-btn {
+  flex: 1;
+  height: 50px;
+  line-height: 50px;
+  border-radius: 25px;
+  border-radius: 25px;
+  font-size: 22px; /* 固定字号 22px */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
+  border: none;
+}
+
+.action-btn::after {
+  border: none;
+}
+
+.submit-btn-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 5px; /* 文字左侧间距改为 5px */
+  display: block;
+}
+
+.stop-icon {
+    width: 25px;
+    height: 25px;
+    display: block;
+    position: absolute; /* 绝对定位，防止倒计时宽度变化导致抖动 */
+    right: 20px; /* 距右侧固定 20px */
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0; /* 移除之前的 margin */
+}
+
+.submit-actions .action-btn.cancel {
+  background: #FFFFFF; /* 改为纯白 */
+  color: #373737;
+  font-weight: 500;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25) !important;
+}
+
+.submit-actions .action-btn.submit {
+  /* 渐变色 */
+  background: linear-gradient(45deg, #FFB9AC 0%, #E6AACF 100%) !important;
+  color: #FFFFFF !important;
+  font-weight: 600;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* 禁用状态 */
+.action-btn.submit.disabled {
+  opacity: 1 !important; /* 强制不透明，为了显色 */
+  background: #F5F5F5 !important; /* 禁用背景 */
+  color: #DFDFDF !important;
+  box-shadow: none !important; /* 禁用状态移除阴影 */
+}

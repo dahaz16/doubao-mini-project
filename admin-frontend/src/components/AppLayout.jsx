@@ -24,15 +24,17 @@ const DB_TABLES = [
 export default function AppLayout({ children }) {
     const navigate = useNavigate();
     const location = useLocation();
-    const [selectedKey, setSelectedKey] = useState('interview');
-    const [openKeys, setOpenKeys] = useState(['interview', 'config', 'database']);
+    const [selectedKey, setSelectedKey] = useState('interview-detail');
+    const [openKeys, setOpenKeys] = useState(['monitor', 'config', 'database']);
 
     useEffect(() => {
         // 根据当前路径设置选中的菜单项
         const path = location.pathname;
 
         if (path.startsWith('/interview')) {
-            setSelectedKey('interview');
+            setSelectedKey('interview-detail');
+        } else if (path.startsWith('/writing')) {
+            setSelectedKey('writing-detail');
         } else if (path.includes('/config/sys')) {
             setSelectedKey('sys-config');
         } else if (path.includes('/config/models')) {
@@ -43,22 +45,28 @@ export default function AppLayout({ children }) {
             const tableName = path.split('/table/')[1];
             setSelectedKey(`table-${tableName}`);
         } else {
-            setSelectedKey('interview');
+            setSelectedKey('interview-detail');
         }
     }, [location]);
 
     // 构建菜单项
     const menuItems = [
         {
-            key: 'interview',
+            key: 'monitor',
             icon: <TeamOutlined />,
-            label: '采访库',
+            label: '使用监控',
             children: [
                 {
                     key: 'interview-detail',
                     icon: <EyeOutlined />,
                     label: '采访详情',
                     onClick: () => navigate('/interview'),
+                },
+                {
+                    key: 'writing-detail',
+                    icon: <FileTextOutlined />,
+                    label: '写作详情',
+                    onClick: () => navigate('/writing'),
                 },
             ],
         },

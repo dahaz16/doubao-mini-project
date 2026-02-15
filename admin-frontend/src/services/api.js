@@ -62,7 +62,7 @@ export const deleteModel = (modelId) =>
 
 // ============ 提示词配置相关 ============
 
-export const getPrompts = () => api.get('/config/prompts');
+export const getPrompts = (params) => api.get('/config/prompts', { params });
 
 export const createPrompt = (data) => api.post('/config/prompts', data);
 
@@ -77,3 +77,23 @@ export const getUsersList = (params) => api.get('/users', { params });
 
 export const deleteUserInterviewRecords = (userId) =>
     api.delete(`/users/${userId}/interview-records`);
+
+// ============ 写作管理相关 ============
+
+export const getWritingUsers = (params) => api.get('/users', { params });
+
+export const getWritingStatus = (userId) =>
+    api.get(`/writing/status?user_id=${userId}`);
+
+export const getWritingCachepool = (userId) =>
+    api.get(`/writing/cachepool?user_id=${userId}`);
+
+export const getMemoirArticles = (userId, chapterId) => {
+    const params = { user_id: userId };
+    if (chapterId) params.chapter_id = chapterId;
+    return api.get('/memoir/articles', { params });
+};
+
+export const deleteMemoirArticle = (userId) =>
+    api.delete(`/memoir/delete?user_id=${userId}`);
+

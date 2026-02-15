@@ -33,6 +33,7 @@ from .narration_service import (
     take_cachepool_snapshot,
 )
 from .llm_api_service import call_stn_llm
+from .database import get_db_connection
 from .stn_database import (
     insert_stage, update_stage,
     insert_topic, update_topic,
@@ -112,6 +113,11 @@ async def run_stn_agent(user_id: str) -> bool:
             status = get_or_create_narration_status(user_id)
             unprocessed_content = status.get('stn_unprocessed_content') or ''
             
+            # 获取 previous_response_id 和 expire_at (用于 Session Caching)
+            prev_response_id = status.get('stn_llm_session_previous_response_id') if session_valid else None
+            expire_at_dt = status.get('stn_llm_session_expire_at') if session_valid else None
+            expire_at = int(expire_at_dt.timestamp()) if expire_at_dt else None
+            
             # 合并未处理内容和新内容
             user_content = (unprocessed_content + " " + cachepool_content).strip()
             
@@ -122,8 +128,14 @@ async def run_stn_agent(user_id: str) -> bool:
             import json
             llm_input_str = json.dumps(llm_input, ensure_ascii=False)
             
-            # Step 6: 调用 Stn LLM (Async)
-            result = await call_stn_llm(user_id, llm_input, llm_input_str=llm_input_str)
+            # Step 6: 调用 Stn LLM (Async) - ✅ v3.8: 传入 expire_at
+            result = await call_stn_llm(
+                user_id, 
+                llm_input, 
+                previous_response_id=prev_response_id,
+                expire_at=expire_at,
+                llm_input_str=llm_input_str
+            )
             
             if not result.get('success'):
                 logging.error(f"❌ Stn LLM 调用失败: {result.get('error')}")
@@ -148,7 +160,14 @@ async def run_stn_agent(user_id: str) -> bool:
                 old_max_id = max(sb['story_id'] for sb in sb_records)
                 mark_storyboards_stn_processed(user_id, old_max_id)
             
-            update_stn_session(user_id, unprocessed_content=None)
+            # Step 10: 更新 Session 状态 - ✅ v3.8: 存储 previous_response_id
+            new_response_id = result.get('response_id')
+            update_stn_session(
+                user_id=user_id,
+                session_id=new_response_id,
+                previous_response_id=new_response_id,  # ✅ 存储 previous_response_id
+                unprocessed_content=None
+            )
             
             # Step 10: 触发 Dir Agent
             asyncio.create_task(_trigger_dir_agent(user_id))
@@ -179,18 +198,32 @@ def run_stn_agent_async(user_id: str, session_id: str, cache_content: str, cache
         cache_content: 缓存内容 (v3.3 中忽略，从 narration_status 获取)
         cachepool_id: 缓存池 ID (v3.3 中忽略)
     """
+    logging.info(f"🔔 触发 Stn Agent (User: {user_id[:8]}...)")
+    
     async def _run():
         try:
-            await run_stn_agent(user_id)
+            logging.info(f"🚀 开始执行 Stn Agent 异步任务 (User: {user_id[:8]}...)")
+            result = await run_stn_agent(user_id)
+            logging.info(f"✅ Stn Agent 异步任务完成 (User: {user_id[:8]}..., Result: {result})")
         except Exception as e:
-            logging.error(f"❌ run_stn_agent_async 执行失败: {e}")
+            logging.error(f"❌ run_stn_agent_async 执行失败: {e}", exc_info=True)
+    
+    def _task_done_callback(task):
+        """异步任务完成回调,用于捕获未处理的异常"""
+        try:
+            task.result()  # 这会重新抛出任务中的异常
+        except Exception as e:
+            logging.error(f"💥 Stn Agent 异步任务异常 (User: {user_id[:8]}...): {e}", exc_info=True)
     
     # 使用 asyncio.create_task 如果在异步上下文中
     try:
         loop = asyncio.get_running_loop()
-        asyncio.create_task(_run())
+        task = asyncio.create_task(_run())
+        task.add_done_callback(_task_done_callback)  # 添加回调捕获异常
+        logging.info(f"📋 Stn Agent 任务已创建 (User: {user_id[:8]}...)")
     except RuntimeError:
         # 没有运行中的事件循环，创建一个新的
+        logging.info(f"📋 Stn Agent 同步执行 (User: {user_id[:8]}...)")
         asyncio.run(_run())
 
 
@@ -334,14 +367,14 @@ async def _process_parsed_data(user_id: str, data: Dict[str, Any]) -> Optional[i
             if story_id:
                 max_story_id = story_id
     
-    # 3. 处理 Shot (O)
-    shots = data.get('O', [])
-    for shot in shots:
-        shot_id = _process_shot(user_id, shot, id_map)
-        if shot_id:
-            story_id = _create_storyboard_entry(user_id, 'O', shot_id, shot)
-            if story_id:
-                max_story_id = story_id
+    # 3. 处理 Shot (O) - ❌ v3.0: 已移除 Shot 实体
+    # shots = data.get('O', [])
+    # for shot in shots:
+    #     shot_id = _process_shot(user_id, shot, id_map)
+    #     if shot_id:
+    #         story_id = _create_storyboard_entry(user_id, 'O', shot_id, shot)
+    #         if story_id:
+    #             max_story_id = story_id
     
     # 4. 处理 Character (C)
     characters = data.get('C', [])
@@ -357,7 +390,7 @@ async def _process_parsed_data(user_id: str, data: Dict[str, Any]) -> Optional[i
     for rel in relations:
         _process_relation(user_id, rel, id_map)
     
-    logging.info(f"📝 处理完成: S={len(stages)}, T={len(topics)}, O={len(shots)}, C={len(characters)}, R={len(relations)}")
+    logging.info(f"📝 处理完成: S={len(stages)}, T={len(topics)}, C={len(characters)}, R={len(relations)}")
     
     return max_story_id
 
@@ -372,10 +405,10 @@ def _process_stage(user_id: str, stage: Dict[str, Any], id_map: Dict[str, int]) 
         stage_id = insert_stage(
             user_id=user_id,
             title=stage.get('title', ''),
-            summary=stage.get('summary'),
-            content=stage.get('content'),
-            start_time=stage.get('start_time'),
-            end_time=stage.get('end_time')
+            summary=stage.get('stage_summary') or stage.get('summary'),
+            content=stage.get('stage_content') or stage.get('content'),
+            start_time=None,  # ✅ v3.0: 强制为 None
+            end_time=None     # ✅ v3.0: 强制为 None
         )
         if stage_id and tid:
             id_map[tid] = stage_id
@@ -387,8 +420,8 @@ def _process_stage(user_id: str, stage: Dict[str, Any], id_map: Dict[str, int]) 
             update_stage(
                 stage_id=stage_id,
                 title=stage.get('title'),
-                summary=stage.get('summary'),
-                content=stage.get('content')
+                summary=stage.get('stage_summary') or stage.get('summary'),
+                content=stage.get('stage_content') or stage.get('content')
             )
             if tid:
                 id_map[tid] = stage_id
@@ -396,26 +429,40 @@ def _process_stage(user_id: str, stage: Dict[str, Any], id_map: Dict[str, int]) 
 
 
 def _process_topic(user_id: str, topic: Dict[str, Any], id_map: Dict[str, int]) -> Optional[int]:
-    """处理 Topic 实体"""
+    """处理 Topic 实体（两阶段处理：先插入，后建立关系）"""
+    from .wtr_cachepool_service import update_writing_cachepool
+    
     pt = topic.get('pt', 'n')
     tid = topic.get('tid')
     
     if pt == 'n':
-        # 新建 - 需要找到父 Stage
-        parent_id = _resolve_id(topic.get('parent'), id_map)
-        if not parent_id:
-            # 如果没有指定父级，使用最近的 Stage
-            parent_id = 0  # 默认值
-        
+        # 新建 - 不设置父级外键，由 R 数组处理
         topic_id = insert_topic(
             user_id=user_id,
-            parent_stage_id=parent_id,
             title=topic.get('title', ''),
-            summary=topic.get('summary'),
-            content=topic.get('content')
+            summary=topic.get('topic_summary') or topic.get('summary'),
+            content=topic.get('topic_content') or topic.get('content'),
+            parent_stage_id=None  # 阶段 1：不设置父级
         )
-        if topic_id and tid:
-            id_map[tid] = topic_id
+        if topic_id:
+            # ✅ v0.5: 新增 topic 后，设置 topic_writing_state = 0 并触发写作缓存池更新
+            try:
+                with get_db_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE topic
+                            SET topic_writing_state = 0
+                            WHERE topic_id = %s
+                        """, (topic_id,))
+                        conn.commit()
+                
+                # 触发写作缓存池更新
+                update_writing_cachepool(user_id, topic_id)
+            except Exception as e:
+                logging.warning(f"⚠️  Failed to update writing cachepool for topic {topic_id}: {e}")
+            
+            if tid:
+                id_map[tid] = topic_id
         return topic_id
     else:
         # 更新
@@ -424,32 +471,45 @@ def _process_topic(user_id: str, topic: Dict[str, Any], id_map: Dict[str, int]) 
             update_topic(
                 topic_id=topic_id,
                 title=topic.get('title'),
-                summary=topic.get('summary'),
-                content=topic.get('content')
+                summary=topic.get('topic_summary') or topic.get('summary'),
+                content=topic.get('topic_content') or topic.get('content')
             )
+            
+            # ✅ v0.5: 更新 topic 后，设置 topic_writing_state = 0 并触发写作缓存池更新
+            try:
+                with get_db_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE topic
+                            SET topic_writing_state = 0
+                            WHERE topic_id = %s
+                        """, (topic_id,))
+                        conn.commit()
+                
+                # 触发写作缓存池更新
+                update_writing_cachepool(user_id, topic_id)
+            except Exception as e:
+                logging.warning(f"⚠️  Failed to update writing cachepool for topic {topic_id}: {e}")
+            
             if tid:
                 id_map[tid] = topic_id
         return topic_id
 
 
 def _process_shot(user_id: str, shot: Dict[str, Any], id_map: Dict[str, int]) -> Optional[int]:
-    """处理 Shot 实体"""
+    """处理 Shot 实体（两阶段处理：先插入，后建立关系）"""
     pt = shot.get('pt', 'n')
     tid = shot.get('tid')
     
     if pt == 'n':
-        # 新建 - 需要找到父 Topic
-        parent_id = _resolve_id(shot.get('parent'), id_map)
-        if not parent_id:
-            parent_id = 0  # 默认值
-        
+        # 新建 - 不设置父级外键，由 R 数组处理
         shot_id = insert_shot(
             user_id=user_id,
-            parent_topic_id=parent_id,
             title=shot.get('title', ''),
             summary=shot.get('summary'),
             content=shot.get('content'),
-            shot_type=shot.get('type', 1)
+            shot_type=shot.get('type', 1),
+            parent_topic_id=None  # 阶段 1：不设置父级
         )
         if shot_id and tid:
             id_map[tid] = shot_id
@@ -471,22 +531,18 @@ def _process_shot(user_id: str, shot: Dict[str, Any], id_map: Dict[str, int]) ->
 
 
 def _process_character(user_id: str, char: Dict[str, Any], id_map: Dict[str, int]) -> Optional[int]:
-    """处理 Character 实体"""
+    """处理 Character 实体（两阶段处理：先插入，后建立关系）"""
     pt = char.get('pt', 'n')
     tid = char.get('tid')
     
     if pt == 'n':
-        # 新建 - 需要找到关联 Shot
-        related_id = _resolve_id(char.get('related'), id_map)
-        if not related_id:
-            related_id = 0  # 默认值
-        
+        # 新建 - 不设置关联外键，由 R 数组处理
         char_id = insert_character(
             user_id=user_id,
-            related_shot_id=related_id,
             name=char.get('name', ''),
             relation=char.get('relation'),
-            evaluation=char.get('evaluation')
+            evaluation=char.get('evaluation'),
+            related_shot_id=None  # 阶段 1：不设置关联
         )
         if char_id and tid:
             id_map[tid] = char_id
@@ -514,6 +570,14 @@ def _process_relation(user_id: str, rel: Dict[str, Any], id_map: Dict[str, int])
     - link: 建立父子关系
     - unlink: 解除关系
     """
+    # ✅ v3.0: 防御性检查 - 忽略涉及 Shot 的关系
+    src_type = _get_entity_type_from_id(rel.get('src'), id_map)
+    tgt_type = _get_entity_type_from_id(rel.get('tgt'), id_map)
+    
+    if src_type == 'O' or tgt_type == 'O':
+        logging.warning(f"⚠️ v3.0: 忽略涉及 Shot 的关系 - src={rel.get('src')}, tgt={rel.get('tgt')}")
+        return
+    
     rel_type = rel.get('type')
     src = _resolve_id(rel.get('src'), id_map)
     tgt = _resolve_id(rel.get('tgt'), id_map)

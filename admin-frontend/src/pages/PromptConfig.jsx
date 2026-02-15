@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Modal, Form, Input, Select, Switch, message, Typography, Space, Tag } from 'antd';
+import { Card, Table, Button, Modal, Form, Input, Select, Switch, message, Typography, Space, Tag, Tabs, Checkbox } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { getPrompts, createPrompt, togglePromptActive } from '../services/api';
 
@@ -9,22 +9,36 @@ const LLM_TYPES = {
     0: 'Intv（访谈员）',
     1: 'Stn（速记员）',
     2: 'Dir（导演）',
+    3: 'Wtr（写作员）',
 };
+
+const LLM_TAB_ITEMS = [
+    { key: '0', label: 'Intv LLM' },
+    { key: '1', label: 'Stn LLM' },
+    { key: '2', label: 'Dir LLM' },
+    { key: '3', label: 'Wtr LLM' },
+];
 
 export default function PromptConfig() {
     const [prompts, setPrompts] = useState([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
+    const [currentTab, setCurrentTab] = useState('0'); // 默认 Intv LLM
+    const [showAllVersions, setShowAllVersions] = useState(false); // 默认只显示激活的
     const [form] = Form.useForm();
 
     useEffect(() => {
         loadPrompts();
-    }, []);
+    }, [currentTab, showAllVersions]); // Tab 切换或筛选条件变化时重新加载
 
     const loadPrompts = async () => {
         setLoading(true);
         try {
-            const data = await getPrompts();
+            const params = {
+                llm_type: parseInt(currentTab),
+                show_all_versions: showAllVersions,
+            };
+            const data = await getPrompts(params);
             setPrompts(data.data || []);
         } catch (error) {
             message.error('加载提示词失败: ' + error.message);
@@ -35,6 +49,8 @@ export default function PromptConfig() {
 
     const handleAdd = () => {
         form.resetFields();
+        // 设置默认 LLM 类型为当前 Tab
+        form.setFieldsValue({ llm_type: parseInt(currentTab) });
         setModalVisible(true);
     };
 
@@ -68,24 +84,19 @@ export default function PromptConfig() {
             width: 60,
         },
         {
-            title: 'LLM 类型',
-            dataIndex: 'llm_type',
-            key: 'llm_type',
-            width: 150,
-            render: (type) => LLM_TYPES[type] || type,
-        },
-        {
             title: '提示词内容',
             dataIndex: 'prompt_content',
             key: 'prompt_content',
-            ellipsis: true,
             render: (text) => (
-                <div style={{ maxHeight: 100, overflow: 'auto' }}>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12 }}>
-                        {text.substring(0, 200)}
-                        {text.length > 200 ? '...' : ''}
-                    </pre>
-                </div>
+                <pre style={{
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    lineHeight: 1.5,
+                }}>
+                    {text}
+                </pre>
             ),
         },
         {
@@ -128,6 +139,22 @@ export default function PromptConfig() {
             </Space>
 
             <Card>
+                <Tabs
+                    activeKey={currentTab}
+                    onChange={setCurrentTab}
+                    items={LLM_TAB_ITEMS}
+                    style={{ marginBottom: 16 }}
+                />
+
+                <Space style={{ marginBottom: 16 }}>
+                    <Checkbox
+                        checked={showAllVersions}
+                        onChange={(e) => setShowAllVersions(e.target.checked)}
+                    >
+                        显示全部版本提示词
+                    </Checkbox>
+                </Space>
+
                 <Table
                     columns={columns}
                     dataSource={prompts}
@@ -154,6 +181,7 @@ export default function PromptConfig() {
                             <Select.Option value={0}>Intv（访谈员）</Select.Option>
                             <Select.Option value={1}>Stn（速记员）</Select.Option>
                             <Select.Option value={2}>Dir（导演）</Select.Option>
+                            <Select.Option value={3}>Wtr（写作员）</Select.Option>
                         </Select>
                     </Form.Item>
                     <Form.Item

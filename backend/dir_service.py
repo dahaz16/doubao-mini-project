@@ -141,6 +141,7 @@ async def run_dir_agent(user_id: str) -> bool:
             word_count = len(hint_content)
             update_dir_session(
                 user_id=user_id,
+                session_id=new_response_id,
                 previous_response_id=new_response_id,
                 word_count_delta=word_count
             )

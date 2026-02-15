@@ -191,6 +191,10 @@ async def asr_stream(client_ws: WebSocket):
                     print("Send Loop Ended")
 
             async def receive_text_loop():
+                # 追踪已发送的 utterance，防止重复发送
+                # 注意：根据火山引擎官方说明，utterances 是全量数组，definite:true 的句子不会被移除
+                sent_utterances = {}  # 格式: {index: "last_sent_text"}
+                
                 try:
                     async for message in volc_ws:
                         if isinstance(message, str):
@@ -217,23 +221,55 @@ async def asr_stream(client_ws: WebSocket):
                             if is_gzip: payload = gzip.decompress(payload)
                             try:
                                 json_str = payload.decode('utf-8', errors='replace')
-                                print(f"[ASR_DEBUG] Raw Binary JSON: {json_str}")
+                                # 只在调试时打印完整 JSON（可能很长）
+                                # print(f"[ASR_DEBUG] Raw Binary JSON: {json_str}")
                                 data = json.loads(json_str)
                                 result = data.get('result')
                                 if result:
                                     # Send each utterance separately with correct is_final flag
                                     utterances = result.get('utterances', [])
+                                    
+                                    # ===== 详细日志：追踪 utterances 数组变化 =====
                                     if utterances:
-                                        for i, utterance in enumerate(utterances):
+                                        utt_summary = [(u.get('index', '?'), u.get('definite', False), u.get('text', '')[:20]) for u in utterances]
+                                        print(f"[ASR_TRACE] utterances数组({len(utterances)}条): {utt_summary}")
+                                        
+                                        # 检测 index 是否有异常（如从高值突然变回0）
+                                        indices = [u.get('index', 0) for u in utterances]
+                                        if len(indices) > 1 and indices[-1] < indices[0]:
+                                            print(f"[ASR_WARN] ⚠️ 检测到 index 异常！数组中 index 不是递增的: {indices}")
+                                    if utterances:
+                                        for utterance in utterances:
+                                            # 使用 utterance 自己的 index 字段，而不是数组位置
+                                            utt_index = utterance.get('index', 0)
                                             text = utterance.get('text', '')
                                             is_final = utterance.get('definite', False)
-                                            if text:
+                                            
+                                            if not text:
+                                                continue
+                                            
+                                            # 去重逻辑：只有当内容变化时才发送
+                                            should_send = False
+                                            
+                                            if utt_index not in sent_utterances:
+                                                # 新的 utterance，需要发送
+                                                should_send = True
+                                            elif text != sent_utterances[utt_index]:
+                                                # 内容有变化，需要发送
+                                                should_send = True
+                                            
+                                            if should_send:
                                                 await client_ws.send_json({
                                                     "text": text, 
                                                     "is_final": is_final,
-                                                    "index": i
+                                                    "index": utt_index
                                                 })
-                                                print(f"[ASR] Sent: idx={i}, is_final={is_final}, text={text[:30]}...")
+                                                print(f"[ASR] Sent: idx={utt_index}, is_final={is_final}, text={text[:30]}...")
+                                                
+                                                # 更新记录（不删除，因为 utterances 是全量数组）
+                                                sent_utterances[utt_index] = text
+                                            else:
+                                                print(f"[ASR] Skipped duplicate: idx={utt_index}, text={text[:30]}...")
                                     else:
                                         # Fallback for old format
                                         text = result['text'] if isinstance(result, dict) else result[0]['text']
@@ -446,7 +482,7 @@ def synthesize_speech(text, user_id=None, text_id=None, voice_id=None, output_di
                 model_id = get_model_id_by_name("Vivi 2.0")
                 if not model_id:
                     # 如果找不到,使用默认值或查询第一个 TTS 模型
-                    from database import get_db_connection
+                    from .database import get_db_connection
                     with get_db_connection() as conn:
                         with conn.cursor() as cursor:
                             cursor.execute("SELECT model_id FROM base_models WHERE model_type = 'TTS' LIMIT 1")

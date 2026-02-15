@@ -1,0 +1,413 @@
+/* 容器：现在只作为视口容器 */
+.container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden; 
+}
+
+/* 背景层：固定不动 */
+.background-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* 使用全局变量 */
+  background: var(--bg-gradient-colors);
+  background-size: 400% 400%;
+  animation: gradient-flow var(--bg-speed-normal) ease infinite;
+  z-index: -2;
+}
+
+/* ==================== 返回按钮 ==================== */
+.back-button {
+  position: absolute;
+  left: 20px;
+  width: 44px; /* 增大点击区域宽度 */
+  z-index: 100; /* 确保在最上层 */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* 左对齐 */
+  padding: 0;
+}
+
+.back-button image {
+  width: 32px;
+  height: 32px;
+}
+
+/* 激活状态（写作中）：背景加速 */
+.background-layer.active {
+  animation-duration: var(--bg-speed-active) !important;
+}
+
+/* 半透明遮罩层 - 控制整体不透明度 */
+.background-layer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* 默认状态：使用全局变量 */
+  background: rgba(255, 255, 255, var(--bg-mask-opacity-story));
+  pointer-events: none;
+  z-index: -1;
+  /* 添加过渡动画 */
+  transition: background 1s ease;
+}
+
+/* 激活状态（写作中）：遮罩变淡（背景变深） */
+.background-layer.active::before {
+  background: rgba(255, 255, 255, var(--bg-mask-opacity-active));
+}
+
+/* 移除本地动画定义，使用 app.wxss 中的全局定义 */
+
+/* 滚动层：承载所有内容 */
+.content-scroll {
+  width: 100%;
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  color: transparent;
+}
+
+.content-wrapper {
+  min-height: 100%;
+  /* 确保内容能被滚动到底部 */
+  padding-bottom: 60rpx; 
+}
+
+/* 安全区域占位 */
+.safe-area-top {
+  height: 88px; /* 导航栏高度 44px + 状态栏 44px */
+  width: 100%;
+}
+
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Loading 状态 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.loading-spinner {
+  width: 60rpx;
+  height: 60rpx;
+  border: 6rpx solid rgba(102, 126, 234, 0.2);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  margin-top: 30rpx;
+  font-size: 28rpx;
+  color: #666;
+  font-weight: 500;
+}
+
+/* 主内容区 */
+.content {
+  padding: 30rpx;
+  /* padding-bottom 由 content-wrapper 接管 */
+  position: relative;
+  z-index: 1;
+}
+
+/* 空状态时禁止滚动 */
+.content.no-scroll {
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ==================== AI消息容器（空状态/写作中状态） ==================== */
+/* 空状态时居中显示 */
+.ai-message-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; /* 垂直居中 */
+  min-height: 100vh; /* 占满全屏高度 */
+}
+
+/* 有文章+更新提示时不居中,紧贴顶部 */
+.ai-message-container.compact {
+  min-height: auto;
+  justify-content: flex-start;
+  padding-top: 30rpx; /* 稍微加点顶部间距 */
+}
+
+/* AI 虚拟形象 */
+.top-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 108px;
+  position: relative;
+  z-index: 1; /* 层级低于 middle-section */
+}
+
+/* 有文章+更新提示时,紧接安全区域 */
+.ai-message-container.compact .top-section {
+  margin-top: 0;
+}
+
+.ai-avatar {
+  width: 360px;
+  height: 180px;
+  position: relative;
+  /* z-index 由父级 .top-section 控制 */
+}
+
+
+/* AI 字幕气泡 */
+.middle-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  
+  /* 修正：显式计算宽度以对抗父级的 align-items: center */
+  width: calc(100% + 60rpx); 
+  
+  /* 抵消父级 30rpx padding */
+  margin-left: -30rpx;
+  margin-right: -30rpx;
+  
+  /* 设置物理 20px 边距 */
+  padding-left: 20px;
+  padding-right: 20px;
+  
+  position: relative;
+  z-index: 2; /* 确保盖住头像，并建立新的层叠上下文 */
+}
+
+.ai-subtitle-bubble {
+  background: #ffffff; /* 确保背景是纯白且不透明 */
+  border-radius: 30px;
+  padding: 20px 20px 25px 20px !important; /* 强制底部 padding 为 25px */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ai-subtitle-scroll {
+  width: 100%;
+  text-align: center;
+  text-align: center;
+  line-height: 1.5; /* 与采访页一致 */
+  /* padding-bottom 由 bubble padding 控制，或者如果没按钮时的间距…… 
+     wait, if there IS a button, we want 15px between text and button.
+     if there is NO button, we want 20px padding bottom.
+     Current logic: padding-bottom 20px on bubble covers the "no button" case.
+     The "with button" case: text -> 15px -> button -> ? -> bottom 20px.
+     Let's remove padding-bottom from scroll first to avoid double padding */
+  padding-bottom: 0; 
+}
+
+/* 思考中状态：彩虹渐变边框动画 */
+.ai-subtitle-bubble.thinking-bubble {
+  position: relative;
+  border: none;
+  background: #ffffff; /* 强制白色背景 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  z-index: auto; /* 不建立新的层叠上下文，让 ::before 的 z-index: -1 生效 */
+}
+
+/* 复用 interview 页面的 fade-in/out 逻辑 (既然已经封装，表现应一致) */
+.ai-subtitle-bubble::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 33px;
+  /* 使用全局变量 */
+  background: var(--bubble-border-gradient);
+  background-size: 300% 100%;
+  animation: rainbow-border var(--bubble-border-speed) linear infinite;
+  z-index: -1; /* 沉到父级背景之下 */
+  
+  /* 默认隐藏 */
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+}
+
+/* 激活状态下显示 */
+.ai-subtitle-bubble.thinking-bubble::before {
+  opacity: 1;
+}
+
+.ai-subtitle-text {
+  font-size: 22px;
+  font-weight: 600;
+  color: #373737;
+  line-height: 1.5;
+  white-space: pre-line;
+  text-align: center;
+}
+
+.ai-subtitle-text.thinking {
+  color: #A6A6A6;
+  font-weight: 600;
+}
+
+/* 字幕板内按钮容器（统一样式） */
+.bubble-btn-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 15px !important; /* 强制距上方文字 15px */
+  margin-bottom: 0 !important; /* 底部间距由父容器 padding 控制 */
+}
+
+.bubble-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px; 
+  /* 强制固定尺寸 130x36 */
+  width: 130px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important; /* 移除 padding，避免挤压 */
+  margin: 0;
+  line-height: 36px; /* 垂直居中 */
+  border-radius: 18px; /* 高度的一半 */
+  background: linear-gradient(45deg, #FFB9AC 0%, #E6AACF 100%);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25); /* 与首页一致 */
+  font-size: 18px; /* 固定字号 */
+  font-weight: 600;
+  color: #FFFFFF;
+  border: none;
+  box-sizing: border-box;
+}
+
+.bubble-btn::after {
+  border: none;
+}
+
+.bubble-btn-icon {
+  width: auto; /* 宽度自适应 */
+  height: 16px; /* 高度固定，与文字协调 */
+  filter: brightness(0) invert(1); 
+  display: block; /* 防止行内元素由于基线对齐产生额外空间 */
+}
+
+/* 文章容器 */
+.articles-container {
+  padding: 30rpx;
+  margin-top: 30px; /* 距AI组件30px物理距离,所有机型一致 */
+}
+
+/* 章节标题 */
+.chapter-header {
+  margin-bottom: 20px; /* 改为 20px */
+  padding-bottom: 20px; /* 改为 20px */
+  border-bottom: 3rpx solid #000000; /* 改为纯黑色 */
+}
+
+.chapter-title {
+  font-size: 30px; /* 固定物理大小 */
+  font-weight: 700;
+  color: #333;
+}
+
+/* Section 容器 */
+.section-container {
+  margin-bottom: 40rpx;
+}
+
+
+
+.section-title {
+  display: flex;
+  align-items: center; /* 垂直居中 */
+  margin-bottom: 20rpx;
+  padding-left: 0; /* 移除原来的内边距 */
+  border-left: none; /* 移除原来的边框 */
+}
+
+.section-icon {
+  height: 33px; /* 与行高一致 */
+  width: auto;  /* 宽度自适应 */
+  margin-right: 10px; /* 固定距离 10px */
+}
+
+.section-title text {
+  font-size: 22px; 
+  font-weight: 600;
+  color: #444;
+  line-height: 33px; /* 1.5倍行高 */
+}
+
+.section-content {
+  font-size: 20px; /* 固定物理大小 */
+  line-height: 1.5; /* 用户要求 1.5 */
+  color: #555;
+  text-align: justify;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 加载更多 */
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 40rpx;
+  padding-top: 30rpx;
+  border-top: 2rpx solid #f0f0f0;
+}
+
+.load-more-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 600;
+  border-radius: 40rpx;
+  padding: 20rpx 60rpx;
+  border: none;
+  box-shadow: 0 4rpx 12rpx rgba(102, 126, 234, 0.3);
+}
+
+.load-more-btn::after {
+  border: none;
+}
+
+/* 结束提示 */
+.end-tip {
+  text-align: center;
+  padding: 40rpx 0;
+  margin-top: 20rpx;
+  border-top: 2rpx solid #f0f0f0;
+}
+
+.end-tip text {
+  font-size: 26rpx;
+  color: #999;
+}
