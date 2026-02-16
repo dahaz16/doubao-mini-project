@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
+# 🔧 Force rebuild - 2026-02-16 16:30 - 确保 pydub 被正确安装
 COPY backend/requirements.txt /app/backend/requirements.txt
 
 # 安装 Python 依赖
