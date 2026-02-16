@@ -263,8 +263,8 @@ def _build_intv_input(
     构建 Intv LLM 输入（v3.4）
     
     根据 session 是否新建，构造不同的 input 数组：
-    - 新建 session: [{role: system, content: prompt}, {role: assistant, content: "pc:..."}, {role: user, content: "ot:...;hc:..."}]
-    - 未新建: [{role: user, content: "ot:...;hc:..."}]
+    - 新建 session: [{role: system, content: prompt}, {role: assistant, content: "前情提要:..."}, {role: user, content: "用户本轮输入:...;回复提示:..."}]
+    - 未新建: [{role: user, content: "用户本轮输入:...;回复提示:..."}]
     """
     # 获取 prompt
     intv_prompt = get_active_prompt(llm_type=0)
@@ -273,9 +273,9 @@ def _build_intv_input(
         intv_prompt = ""
     
     # 构建当前 user 消息
-    user_parts = [f"ot:{current_input}"]
+    user_parts = [f"用户本轮输入:{current_input}"]
     if hint_content:
-        user_parts.append(f"hc:{hint_content}")
+        user_parts.append(f"回复提示:{hint_content}")
     user_message = ";".join(user_parts)
     
     if is_new_session:
@@ -283,7 +283,7 @@ def _build_intv_input(
         messages = [{"role": "system", "content": intv_prompt}]
         
         if previous_content:
-            messages.append({"role": "assistant", "content": f"pc:{previous_content}"})
+            messages.append({"role": "assistant", "content": f"前情提要:{previous_content}"})
         
         messages.append({"role": "user", "content": user_message})
         return messages
