@@ -343,12 +343,43 @@ class FeedbackRequest(BaseModel):
 @app.get("/")
 async def root():
     """
-    健康检查端点
+    健康检查端点 + 依赖诊断
     
-    用于验证后端服务是否正常运行。
-    返回: {"status": "ok", "message": "..."}
+    用于验证后端服务是否正常运行,并诊断关键依赖。
+    返回: {"status": "ok", "message": "...", "dependencies": {...}}
     """
-    return {"status": "ok", "message": "后端服务运行中，已启用全局连接池。"}
+    import sys
+    import subprocess
+    
+    dependencies = {
+        "python_version": sys.version.split()[0],
+        "pydub": {"installed": False, "error": None},
+        "ffmpeg": {"installed": False, "version": None, "error": None}
+    }
+    
+    # 检查 pydub
+    try:
+        import pydub
+        dependencies["pydub"]["installed"] = True
+        dependencies["pydub"]["version"] = getattr(pydub, '__version__', 'unknown')
+    except Exception as e:
+        dependencies["pydub"]["error"] = str(e)
+    
+    # 检查 ffmpeg
+    try:
+        ffmpeg_result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+        if ffmpeg_result.returncode == 0:
+            dependencies["ffmpeg"]["installed"] = True
+            version_line = ffmpeg_result.stdout.split('\n')[0]
+            dependencies["ffmpeg"]["version"] = version_line
+    except Exception as e:
+        dependencies["ffmpeg"]["error"] = str(e)
+    
+    return {
+        "status": "ok", 
+        "message": "后端服务运行中，已启用全局连接池。",
+        "dependencies": dependencies
+    }
 
 
 @app.post("/summarize", response_model=SummaryResponse)
