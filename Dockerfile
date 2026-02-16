@@ -1,5 +1,5 @@
-# 使用 Python 3.13 官方镜像
-FROM python:3.13-slim
+# 使用 Python 3.12 官方镜像 (3.13 不兼容 pydub)
+FROM python:3.12-slim
 
 # 设置工作目录
 WORKDIR /app
