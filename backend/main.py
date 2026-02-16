@@ -209,10 +209,51 @@ async def global_exception_handler(request: Request, exc: Exception):
     """
     全局异常处理器
     
-    捕获所有未处理的异常，返回统一的错误响应。
+    捕获所有未处理的异常,返回统一的错误响应。
     """
     logging.error(f"全局异常: {exc}", exc_info=True)
     return JSONResponse(status_code=500, content={"message": str(exc)})
+
+
+# ============================================================================
+# 诊断端点
+# ============================================================================
+
+@app.get("/api/diagnose")
+async def diagnose_dependencies():
+    """
+    诊断依赖是否正确安装
+    """
+    import sys
+    import subprocess
+    
+    result = {
+        "python_version": sys.version,
+        "pydub": {"installed": False, "error": None},
+        "ffmpeg": {"installed": False, "version": None, "error": None}
+    }
+    
+    # 检查 pydub
+    try:
+        import pydub
+        result["pydub"]["installed"] = True
+        result["pydub"]["version"] = pydub.__version__ if hasattr(pydub, '__version__') else "unknown"
+    except Exception as e:
+        result["pydub"]["error"] = str(e)
+    
+    # 检查 ffmpeg
+    try:
+        ffmpeg_result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+        if ffmpeg_result.returncode == 0:
+            result["ffmpeg"]["installed"] = True
+            # 提取版本号
+            version_line = ffmpeg_result.stdout.split('\n')[0]
+            result["ffmpeg"]["version"] = version_line
+    except Exception as e:
+        result["ffmpeg"]["error"] = str(e)
+    
+    return result
+
 
 
 # 静态文件服务（用于存放音频等资源）
