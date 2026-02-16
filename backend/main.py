@@ -1175,6 +1175,10 @@ async def chat_websocket_v33_endpoint(websocket: WebSocket):
         await tts_task
         
         # --- Post-process: Save Audio to COS & DB ---
+        logging.info(f"[v3.4] 🎵 开始处理 AI 音频保存流程...")
+        logging.info(f"[v3.4] 📊 full_audio_buffer 大小: {len(full_audio_buffer) if full_audio_buffer else 0} bytes")
+        logging.info(f"[v3.4] 📊 ai_text_id: {ai_text_id}")
+        
         if full_audio_buffer and ai_text_id:
             try:
                 from datetime import datetime
@@ -1183,7 +1187,8 @@ async def chat_websocket_v33_endpoint(websocket: WebSocket):
                 from .cos_service import upload_audio_to_cos
                 from .interview_service import save_original_voice
                 
-                logging.info(f"[v3.4] PCM 转换 MP3 中... 大小: {len(full_audio_buffer)} bytes")
+                logging.info(f"[v3.4] ✅ 条件满足,开始转换和上传...")
+                logging.info(f"[v3.4] 📤 PCM 转换 MP3 中... 大小: {len(full_audio_buffer)} bytes")
                 
                 # 1. 将 raw PCM 转为 AudioSegment
                 # 采样率需与 TTS 配置一致 (24000), 16bit(sample_width=2), 单声道
@@ -1193,23 +1198,46 @@ async def chat_websocket_v33_endpoint(websocket: WebSocket):
                     frame_rate=24000,
                     channels=1
                 )
+                logging.info(f"[v3.4] ✅ AudioSegment 创建成功")
                 
                 # 2. 导出为 MP3
                 mp3_fp = BytesIO()
                 audio_segment.export(mp3_fp, format="mp3", bitrate="128k")
                 mp3_data = mp3_fp.getvalue()
+                logging.info(f"[v3.4] ✅ MP3 导出成功, 大小: {len(mp3_data)} bytes")
                 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                 filename = f"tts/{user_id}/{timestamp}.mp3"
+                logging.info(f"[v3.4] 📝 文件名: {filename}")
                 
                 # 3. 上传 MP3 到 COS
+                logging.info(f"[v3.4] 🚀 开始上传到 COS...")
                 audio_url = upload_audio_to_cos(mp3_data, filename)
+                logging.info(f"[v3.4] 📊 COS 上传结果: {audio_url if audio_url else 'FAILED'}")
                 
                 if audio_url:
-                    save_original_voice(user_id, speaker_type=1, audio_url=audio_url, link_original_text_id=ai_text_id)
-                    logging.info(f"[v3.4] PCM 转档成功并保存: {audio_url} (MP3 大小: {len(mp3_data)})")
+                    logging.info(f"[v3.4] ✅ COS 上传成功: {audio_url[:80]}...")
+                    logging.info(f"[v3.4] 💾 开始保存到数据库...")
+                    logging.info(f"[v3.4] 📊 保存参数: user_id={user_id}, speaker_type=1, text_id={ai_text_id}")
+                    
+                    voice_id = save_original_voice(user_id, speaker_type=1, audio_url=audio_url, link_original_text_id=ai_text_id)
+                    
+                    logging.info(f"[v3.4] ✅✅✅ AI 音频保存完全成功! voice_id={voice_id}, url={audio_url}")
+                    logging.info(f"[v3.4] 📊 最终统计: PCM={len(full_audio_buffer)}B, MP3={len(mp3_data)}B, 压缩率={len(mp3_data)/len(full_audio_buffer)*100:.1f}%")
+                else:
+                    logging.error(f"[v3.4] ❌❌❌ COS 上传失败! audio_url 为空")
+                    logging.error(f"[v3.4] 📊 失败信息: user_id={user_id}, text_id={ai_text_id}, mp3_size={len(mp3_data)}")
+                    
             except Exception as e:
-                logging.error(f"[v3.4] Audio Save/Convert Error: {e}")
+                logging.error(f"[v3.4] ❌❌❌ Audio Save/Convert Error: {e}")
+                logging.error(f"[v3.4] 📊 错误上下文: user_id={user_id}, text_id={ai_text_id}, buffer_size={len(full_audio_buffer) if full_audio_buffer else 0}")
+                import traceback
+                logging.error(f"[v3.4] 📚 完整堆栈:\n{traceback.format_exc()}")
+        else:
+            if not full_audio_buffer:
+                logging.warning(f"[v3.4] ⚠️ full_audio_buffer 为空,跳过音频保存")
+            if not ai_text_id:
+                logging.warning(f"[v3.4] ⚠️ ai_text_id 为空,跳过音频保存")
         
         await websocket.send_json({"type": "text_finish"})
             

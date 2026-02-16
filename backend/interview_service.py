@@ -50,7 +50,7 @@ def save_original_text(session_id: str, user_id: str, text: str, speaker_type: i
 
 def save_original_voice(user_id: str, speaker_type: int, audio_url: str, link_original_text_id: int = None):
     """
-    保存语音文件 URL
+    保存语音文件 URL (带重试机制)
     
     Args:
         user_id: 用户 ID
@@ -61,27 +61,45 @@ def save_original_voice(user_id: str, speaker_type: int, audio_url: str, link_or
     Returns:
         interview_original_voice_id: 新创建的记录 ID
     """
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO interview_original_voice 
-                    (user_id, speaker_type, original_voice_url, link_original_text_id)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING interview_original_voice_id
-                """, (user_id, speaker_type, audio_url, link_original_text_id))
-                
-                voice_id = cursor.fetchone()[0]
-                conn.commit()
-        
-        speaker_name = "用户" if speaker_type == 0 else "AI"
-        logging.info(f"✅ 保存语音文件: {speaker_name}, url={audio_url[:50]}..., id={voice_id}")
-        
-        return voice_id
-        
-    except Exception as e:
-        logging.error(f"❌ 保存语音文件失败: {e}")
-        raise
+    import time
+    
+    max_retries = 3
+    retry_delay = 0.5  # 秒
+    
+    for attempt in range(max_retries):
+        try:
+            # 🔧 修复: 每次尝试都使用新的数据库连接,避免连接超时问题
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO interview_original_voice 
+                        (user_id, speaker_type, original_voice_url, link_original_text_id)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING interview_original_voice_id
+                    """, (user_id, speaker_type, audio_url, link_original_text_id))
+                    
+                    voice_id = cursor.fetchone()[0]
+                    conn.commit()
+            
+            speaker_name = "用户" if speaker_type == 0 else "AI"
+            logging.info(f"✅ 保存语音文件: {speaker_name}, url={audio_url[:50]}..., id={voice_id}")
+            
+            return voice_id
+            
+        except Exception as e:
+            speaker_name = "用户" if speaker_type == 0 else "AI"
+            
+            if attempt < max_retries - 1:
+                # 还有重试机会
+                logging.warning(f"⚠️ 保存语音文件失败 (尝试 {attempt + 1}/{max_retries}): {e}, 将在 {retry_delay}s 后重试...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # 指数退避
+            else:
+                # 最后一次尝试也失败了
+                logging.error(f"❌ 保存语音文件失败 ({max_retries} 次尝试后): {e}")
+                logging.error(f"❌ 丢失的音频 URL: {audio_url}")
+                logging.error(f"❌ 关联信息: user_id={user_id}, speaker={speaker_name}, text_id={link_original_text_id}")
+                raise
 
 
 def get_session_history(session_id: str, limit: int = 50):

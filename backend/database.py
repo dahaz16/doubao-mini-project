@@ -27,13 +27,16 @@ def init_connection_pool():
     if connection_pool is None:
         try:
             connection_pool = SimpleConnectionPool(
-                minconn=1,
-                maxconn=10,
-                dsn=DATABASE_URL
+                minconn=2,
+                maxconn=20,  # 🔧 增加最大连接数,支持更多并发请求
+                dsn=DATABASE_URL,
+                # 🔧 添加连接超时设置
+                connect_timeout=10,  # 连接超时 10 秒
+                options='-c statement_timeout=30000'  # SQL 语句超时 30 秒
             )
-            logging.info("数据库连接池初始化成功")
+            logging.info("✅ 数据库连接池初始化成功 (minconn=2, maxconn=20)")
         except Exception as e:
-            logging.error(f"数据库连接池初始化失败: {e}")
+            logging.error(f"❌ 数据库连接池初始化失败: {e}")
             raise
 
 @contextmanager
