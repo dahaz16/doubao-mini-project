@@ -44,15 +44,60 @@ def get_db_connection():
     """
     获取数据库连接的上下文管理器
     使用 with 语句自动管理连接的获取和释放
+    
+    🔧 v3.9 修复: 添加连接健康检查,防止使用僵尸连接
+    - 每次使用前先测试连接是否健康
+    - 如果连接失效,自动重新获取新连接
+    - 最多重试 3 次
     """
     if connection_pool is None:
         init_connection_pool()
     
-    conn = connection_pool.getconn()
+    conn = None
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            # 从连接池获取连接
+            conn = connection_pool.getconn()
+            
+            # 🔍 健康检查: 测试连接是否可用
+            with conn.cursor() as test_cursor:
+                test_cursor.execute("SELECT 1")
+                test_cursor.fetchone()
+            
+            # 连接健康,可以使用
+            if attempt > 0:
+                logging.info(f"✅ 数据库连接健康检查通过 (重试 {attempt} 次后成功)")
+            
+            break  # 成功获取健康连接,跳出重试循环
+            
+        except Exception as e:
+            # 连接不健康,记录日志
+            logging.warning(f"⚠️ 数据库连接健康检查失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+            
+            # 关闭失效的连接
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
+                conn = None
+            
+            # 如果是最后一次尝试,抛出异常
+            if attempt == max_retries - 1:
+                logging.error(f"❌ 数据库连接获取失败,已重试 {max_retries} 次")
+                raise
+            
+            # 否则继续重试
+            continue
+    
     try:
         yield conn
     finally:
-        connection_pool.putconn(conn)
+        # 归还连接到连接池
+        if conn:
+            connection_pool.putconn(conn)
 
 def close_connection_pool():
     """关闭数据库连接池"""
