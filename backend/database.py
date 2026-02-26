@@ -45,11 +45,13 @@ def get_db_connection():
     获取数据库连接的上下文管理器
     使用 with 语句自动管理连接的获取和释放
     
-    🔧 v3.9 修复: 添加连接健康检查,防止使用僵尸连接
-    - 每次使用前先测试连接是否健康
-    - 如果连接失效,自动重新获取新连接
+    🔧 v4.0 修复: 彻底解决连接槽位泄漏问题
+    - 健康检查失败时，必须用 putconn(close=True) 归还槽位，
+      不能直接 conn.close()，否则连接池认为槽位仍被占用
+    - 连接池完全耗尽时（PoolError），直接重建连接池
     - 最多重试 3 次
     """
+    global connection_pool
     if connection_pool is None:
         init_connection_pool()
     
@@ -62,42 +64,61 @@ def get_db_connection():
             conn = connection_pool.getconn()
             
             # 🔍 健康检查: 测试连接是否可用
-            with conn.cursor() as test_cursor:
-                test_cursor.execute("SELECT 1")
-                test_cursor.fetchone()
+            try:
+                conn.reset()  # 重置任何未完成的事务状态
+                with conn.cursor() as test_cursor:
+                    test_cursor.execute("SELECT 1")
+                    test_cursor.fetchone()
+            except Exception as health_err:
+                # ⚠️ 关键修复: 必须先 putconn(close=True) 归还并销毁槽位
+                # 直接 conn.close() 会导致槽位永远泄漏给连接池
+                logging.warning(f"⚠️ 数据库连接健康检查失败 (尝试 {attempt + 1}/{max_retries}): {health_err}")
+                try:
+                    connection_pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = None
+                
+                if attempt == max_retries - 1:
+                    logging.error(f"❌ 数据库连接获取失败,已重试 {max_retries} 次")
+                    raise health_err
+                continue
             
             # 连接健康,可以使用
             if attempt > 0:
                 logging.info(f"✅ 数据库连接健康检查通过 (重试 {attempt} 次后成功)")
-            
             break  # 成功获取健康连接,跳出重试循环
             
-        except Exception as e:
-            # 连接不健康,记录日志
-            logging.warning(f"⚠️ 数据库连接健康检查失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+        except psycopg2.pool.PoolError as pool_err:
+            # 🔧 连接池完全耗尽: 重建整个连接池
+            logging.error(f"❌ 连接池耗尽 (尝试 {attempt + 1}/{max_retries}): {pool_err}，正在重建连接池...")
+            conn = None
+            try:
+                if connection_pool:
+                    connection_pool.closeall()
+            except Exception:
+                pass
+            connection_pool = None
+            init_connection_pool()
             
-            # 关闭失效的连接
-            if conn:
-                try:
-                    conn.close()
-                except:
-                    pass
-                conn = None
-            
-            # 如果是最后一次尝试,抛出异常
             if attempt == max_retries - 1:
-                logging.error(f"❌ 数据库连接获取失败,已重试 {max_retries} 次")
+                logging.error(f"❌ 重建连接池后仍无法获取连接,放弃")
                 raise
-            
-            # 否则继续重试
             continue
     
     try:
         yield conn
     finally:
-        # 归还连接到连接池
-        if conn:
-            connection_pool.putconn(conn)
+        # 归还连接到连接池（正常归还，不销毁）
+        if conn and connection_pool:
+            try:
+                connection_pool.putconn(conn)
+            except Exception as e:
+                logging.warning(f"⚠️ 归还连接失败: {e}")
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
 def close_connection_pool():
     """关闭数据库连接池"""
